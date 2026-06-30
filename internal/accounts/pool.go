@@ -5,10 +5,7 @@ import (
 	"sync"
 )
 
-var (
-	ErrNoAvailable = errors.New("no available account of the requested type")
-	errMock        = errors.New("mock error")
-)
+var ErrNoAvailable = errors.New("no available account of the requested type")
 
 // Pool 账号池管理
 type Pool struct {

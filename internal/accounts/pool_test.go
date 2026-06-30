@@ -1,8 +1,11 @@
 package accounts
 
 import (
+	"errors"
 	"testing"
 )
+
+var errMock = errors.New("mock error")
 
 func TestPoolAcquireByType(t *testing.T) {
 	pool := NewPool(nil)

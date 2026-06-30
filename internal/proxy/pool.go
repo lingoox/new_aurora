@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"log"
 	"net"
 	"sync"
 )
@@ -50,6 +51,9 @@ func (p *Pool) Allocate() string {
 func (p *Pool) Release(ip string) {
 	// IPv4: 无操作（列表可重复使用）
 	// IPv6 (TODO): 回收地址
+	if ip != "" {
+		log.Printf("[proxy] released %s", ip)
+	}
 }
 
 // Count 返回可用代理数量。
