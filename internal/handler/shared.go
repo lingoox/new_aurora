@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"aurora/internal/tokens"
 	chatgpt_types "aurora/internal/types/chatgpt"
 	officialtypes "aurora/internal/types/official"
+	"aurora/util"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -205,4 +208,70 @@ func original_requestHasFiles(request officialtypes.APIRequest) bool {
 		}
 	}
 	return false
+}
+
+// toolCallingEnabled 根据 ENV + Tools 列表判定是否启用工具调用模拟。
+func toolCallingEnabled(tools []officialtypes.Tool) bool {
+	if env := strings.ToLower(strings.TrimSpace(os.Getenv("TOOL_CALLING_ENABLED"))); env == "false" || env == "0" || env == "no" {
+		return false
+	}
+	return len(tools) > 0
+}
+
+// countMessagesTokens 统计消息的 token 数
+func countMessagesTokens(messages []officialtypes.APIMessage) int {
+	total := 0
+	for _, message := range messages {
+		total += util.CountToken(message.Text())
+	}
+	return total
+}
+
+// writeChatCompletionStreamDone 写入流式结束标记
+func writeChatCompletionStreamDone(c *gin.Context, stopSent bool, model string, conversationID string) {
+	if !stopSent {
+		finalLine := officialtypes.StopChunkWithConversation("stop", model, conversationID)
+		c.Writer.WriteString("data: " + finalLine.String() + "\n\n")
+		c.Writer.Flush()
+	}
+	c.Writer.WriteString("data: [DONE]\n\n")
+	c.Writer.Flush()
+}
+
+// looksLikeSandboxRefusal 检测模型是否声称自己处于隔离环境/无法访问工具。
+func looksLikeSandboxRefusal(text string) bool {
+	if text == "" {
+		return false
+	}
+	t := strings.ToLower(text)
+	markers := []string{
+		"/mnt/data", "/workspace", "/home/oai", "filesystem isolado", "ambiente isolado",
+		"root linux", "linux/container", "container atual", "não tem acesso ao diret",
+		"nao tem acesso ao diret", "não está montado", "nao esta montado",
+		"não foi montado", "nao foi montado", "não existe neste ambiente",
+		"nao existe neste ambiente", "não pode continuar neste ambiente",
+		"não é possível ler", "nao e possivel ler",
+		"não foi possível abrir", "nao foi possivel abrir",
+		"não foi possível executar", "nao foi possivel executar",
+		"falha na interface de execução", "falha no parsing",
+		"inferência baseada na estrutura", "inferencia baseada na estrutura",
+		"baseada apenas na estrutura",
+	}
+	for _, m := range markers {
+		if strings.Contains(t, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// appendToolDebugLog 把每次工具解析的输入文本和解析结果写入日志文件
+func appendToolDebugLog(path string, attempt int, text string, calls []officialtypes.ToolCall) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	callsJSON, _ := json.Marshal(calls)
+	fmt.Fprintf(f, "\n=== attempt %d ===\ntext: %s\ncalls: %s\n", attempt, text, string(callsJSON))
 }
