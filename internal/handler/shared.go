@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"aurora/httpclient/bogdanfinn"
@@ -12,6 +13,7 @@ import (
 	"aurora/internal/chatgpt"
 	"aurora/internal/tokens"
 	chatgpt_types "aurora/internal/types/chatgpt"
+	officialtypes "aurora/internal/types/official"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -180,4 +182,27 @@ func websocketProxyFunc(proxy string) (func(*fhttp.Request) (*url.URL, error), e
 		return nil, err
 	}
 	return fhttp.ProxyURL(proxyURL), nil
+}
+
+// maxContinueCount 返回 max_tokens 触发时自动 continue 的最大轮数。
+func maxContinueCount() int {
+	v := os.Getenv("MAX_CONTINUE_COUNT")
+	if v == "" {
+		return 3
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return 3
+	}
+	return n
+}
+
+// original_requestHasFiles 检查请求消息中是否包含文件引用
+func original_requestHasFiles(request officialtypes.APIRequest) bool {
+	for _, message := range request.Messages {
+		if len(message.Files()) > 0 {
+			return true
+		}
+	}
+	return false
 }

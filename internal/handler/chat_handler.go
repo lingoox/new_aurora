@@ -2,6 +2,7 @@ package handler
 
 import (
 	"io"
+	"os"
 	"time"
 
 	"aurora/httpclient/bogdanfinn"
@@ -10,16 +11,23 @@ import (
 	"aurora/internal/tokens"
 	chatgpt_types "aurora/internal/types/chatgpt"
 	officialtypes "aurora/internal/types/official"
+	"aurora/util"
+	chatgptrequestconverter "aurora/conversion/requests/chatgpt"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type ChatHandler struct {
 	accountPool *accounts.Pool
+	sessions    *SessionManager
 }
 
 func NewChatHandler(pool *accounts.Pool) *ChatHandler {
-	return &ChatHandler{accountPool: pool}
+	return &ChatHandler{
+		accountPool: pool,
+		sessions:    NewSessionManager(),
+	}
 }
 
 func (h *ChatHandler) Nightmare(c *gin.Context) {
@@ -32,12 +40,155 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 }
 
 func (h *ChatHandler) Responses(c *gin.Context) {
-	var req officialtypes.ResponsesAPIRequest
-	if err := c.BindJSON(&req); err != nil {
-		respondError(c, 400, err)
+	var responsesRequest officialtypes.ResponsesAPIRequest
+	err := c.BindJSON(&responsesRequest)
+	if err != nil {
+		c.JSON(400, gin.H{"error": gin.H{
+			"message": "Request must be proper JSON",
+			"type":    "invalid_request_error",
+			"param":   nil,
+			"code":    err.Error(),
+		}})
 		return
 	}
-	c.JSON(200, gin.H{"message": "not implemented"})
+
+	original_request, err := responsesRequest.ToAPIRequest()
+	if err != nil {
+		c.JSON(400, gin.H{"error": gin.H{
+			"message": err.Error(),
+			"type":    "invalid_request_error",
+			"param":   "input",
+			"code":    "invalid_request_error",
+		}})
+		return
+	}
+
+	account, err := resolveAccount(c, h.accountPool, original_requestHasFiles(original_request))
+	if err != nil {
+		c.JSON(400, gin.H{"error": gin.H{
+			"message": err.Error(),
+			"type":    "authorization_error",
+			"param":   "Authorization",
+			"code":    400,
+		}})
+		return
+	}
+	if account == nil {
+		c.JSON(400, gin.H{"error": "Not Account Found."})
+		c.Abort()
+		return
+	}
+
+	proxyUrl := account.Proxy
+	input_tokens := 0
+	for _, message := range original_request.Messages {
+		input_tokens += util.CountToken(message.Text())
+	}
+
+	uid := uuid.NewString()
+	secret := createTempSecret(account)
+	client := setupClientWithProxy(proxyUrl)
+
+	translated_request := chatgptrequestconverter.ConvertAPIRequest(original_request, secret, proxyUrl, client)
+
+	// 按 conversationID 复用 ChatClientState，保持 DeviceID/SessionID 一致
+	var clientState *chatgpt.ChatClientState
+	if translated_request.ConversationID != "" {
+		clientState = h.sessions.Get(translated_request.ConversationID)
+	}
+	if clientState == nil {
+		clientState = chatgpt.NewChatClientState()
+	}
+	clientState.ConversationID = translated_request.ConversationID
+	clientState.ParentMessageID = translated_request.ParentMessageID
+	reqModel := original_request.Model
+	if reqModel == "" {
+		reqModel = "auto"
+	}
+
+	response, wsConn, _, status, err := conversationClientOrder(&client, secret, translated_request, proxyUrl, false, clientState)
+	if err != nil {
+		c.JSON(status, gin.H{"error": gin.H{
+			"message": err.Error(),
+			"type":    "request_conversion_error",
+			"param":   "model",
+			"code":    "request_conversion_error",
+		}})
+		return
+	}
+	defer response.Body.Close()
+	if chatgpt.Handle_request_error(c, response) {
+		if wsConn != nil {
+			wsConn.Close()
+			wsConn = nil
+		}
+		return
+	}
+
+	var full_response string
+	for i := maxContinueCount(); i > 0; i-- {
+		var continue_info *chatgpt.ContinueInfo
+		var response_part string
+		result := chatgpt.HandlerDetailedWithOptions(c, response, client, secret, uid, translated_request, false, reqModel, chatgpt.HandlerDetailedOptions{
+			Websocket:   wsConn,
+			ClientState: clientState,
+		})
+		wsConn = nil
+		response_part, continue_info = result.Text, result.Continue
+		full_response += response_part
+		parentMessageID := result.ParentMessageID
+		if continue_info != nil {
+			parentMessageID = continue_info.ParentID
+		}
+		clientState.NoteTurnResult(result.ConversationID, parentMessageID)
+		if result.ConversationID != "" {
+			h.sessions.Register(result.ConversationID, clientState)
+		}
+		if continue_info == nil {
+			break
+		}
+		translated_request.Messages = nil
+		translated_request.Action = "continue"
+		translated_request.ConversationID = continue_info.ConversationID
+		translated_request.ParentMessageID = continue_info.ParentID
+
+		response, wsConn, _, status, err = conversationClientOrder(&client, secret, translated_request, proxyUrl, false, clientState)
+		if err != nil {
+			c.JSON(status, gin.H{"error": gin.H{
+				"message": err.Error(),
+				"type":    "request_conversion_error",
+				"param":   "model",
+				"code":    "request_conversion_error",
+			}})
+			return
+		}
+		defer response.Body.Close()
+		if chatgpt.Handle_request_error(c, response) {
+			if wsConn != nil {
+				wsConn.Close()
+				wsConn = nil
+			}
+			return
+		}
+	}
+	if c.Writer.Status() != 200 {
+		return
+	}
+
+	output_tokens := util.CountToken(full_response)
+	responsesResponse := officialtypes.NewResponsesResponse(full_response, input_tokens, output_tokens, reqModel)
+	if !responsesRequest.Stream || os.Getenv("STREAM_MODE") == "false" {
+		c.JSON(200, responsesResponse)
+		return
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.String(200, "event: response.created\ndata: "+officialtypes.ResponsesCreated(responsesResponse)+"\n\n")
+	c.String(200, "event: response.output_text.delta\ndata: "+officialtypes.ResponsesTextDelta(full_response)+"\n\n")
+	c.String(200, "event: response.completed\ndata: "+officialtypes.ResponsesCompleted(responsesResponse)+"\n\n")
+	c.String(200, "data: [DONE]\n\n")
 }
 
 func (h *ChatHandler) Files(c *gin.Context) {
