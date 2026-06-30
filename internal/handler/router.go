@@ -4,6 +4,7 @@ import (
 	"aurora/httpclient/bogdanfinn"
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
+	"aurora/internal/config"
 	"aurora/middlewares"
 
 	"github.com/gin-gonic/gin"
@@ -18,8 +19,8 @@ func optionsHandler(c *gin.Context) {
 	})
 }
 
-func RegisterRouter(accountPool *accounts.Pool) *gin.Engine {
-	chatHandler := NewChatHandler(accountPool)
+func RegisterRouter(accountPool *accounts.Pool, cfg *config.Config) *gin.Engine {
+	chatHandler := NewChatHandler(accountPool, cfg)
 	imageHandler := NewImageHandler(accountPool)
 	audioHandler := NewAudioHandler(accountPool)
 	authHandler := NewAuthHandler(accountPool)

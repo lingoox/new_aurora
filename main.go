@@ -41,7 +41,7 @@ func main() {
 	}
 	accountPool := accounts.NewPool(accs)
 
-	router := handler.RegisterRouter(accountPool)
+	router := handler.RegisterRouter(accountPool, &cfg)
 
 	host := cfg.ServerHost
 	port := cfg.ServerPort

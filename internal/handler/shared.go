@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 
 	"aurora/httpclient/bogdanfinn"
@@ -16,6 +15,7 @@ import (
 	chatgpt_types "aurora/internal/types/chatgpt"
 	officialtypes "aurora/internal/types/official"
 	"aurora/util"
+		"aurora/internal/config"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -175,19 +175,6 @@ func websocketProxyFunc(proxy string) (func(*fhttp.Request) (*url.URL, error), e
 	return fhttp.ProxyURL(proxyURL), nil
 }
 
-// maxContinueCount 返回 max_tokens 触发时自动 continue 的最大轮数。
-func maxContinueCount() int {
-	v := os.Getenv("MAX_CONTINUE_COUNT")
-	if v == "" {
-		return 3
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < 0 {
-		return 3
-	}
-	return n
-}
-
 // original_requestHasFiles 检查请求消息中是否包含文件引用
 func original_requestHasFiles(request officialtypes.APIRequest) bool {
 	for _, message := range request.Messages {
@@ -198,9 +185,9 @@ func original_requestHasFiles(request officialtypes.APIRequest) bool {
 	return false
 }
 
-// toolCallingEnabled 根据 ENV + Tools 列表判定是否启用工具调用模拟。
-func toolCallingEnabled(tools []officialtypes.Tool) bool {
-	if env := strings.ToLower(strings.TrimSpace(os.Getenv("TOOL_CALLING_ENABLED"))); env == "false" || env == "0" || env == "no" {
+// toolCallingEnabled 根据 Config + Tools 列表判定是否启用工具调用模拟。
+func toolCallingEnabled(tools []officialtypes.Tool, cfg *config.Config) bool {
+	if cfg != nil && !cfg.ToolCallingEnabled {
 		return false
 	}
 	return len(tools) > 0

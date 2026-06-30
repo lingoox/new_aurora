@@ -24,7 +24,7 @@ func init() {
 		_ = acct.InitClient()
 	}
 	accountPool := accounts.NewPool(accs)
-	router = handler.RegisterRouter(accountPool)
+	router = handler.RegisterRouter(accountPool, &cfg)
 }
 
 func Listen(w http.ResponseWriter, r *http.Request) {

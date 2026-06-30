@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"time"
 
 	"aurora/httpclient/bogdanfinn"
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
+	"aurora/internal/config"
 	"aurora/internal/toolcall"
 	chatgpt_types "aurora/internal/types/chatgpt"
 	officialtypes "aurora/internal/types/official"
@@ -23,12 +23,14 @@ import (
 type ChatHandler struct {
 	accountPool *accounts.Pool
 	sessions    *SessionManager
+	cfg         *config.Config
 }
 
-func NewChatHandler(pool *accounts.Pool) *ChatHandler {
+func NewChatHandler(pool *accounts.Pool, cfg *config.Config) *ChatHandler {
 	return &ChatHandler{
 		accountPool: pool,
 		sessions:    NewSessionManager(),
+		cfg:         cfg,
 	}
 }
 
@@ -77,8 +79,8 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 	client := setupClientWithProxy(proxyUrl)
 
 	// 工具调用模式判定
-	toolsEnabled := toolCallingEnabled(original_request.Tools)
-	if toolsEnabled && os.Getenv("STREAM_MODE") != "false" {
+	toolsEnabled := toolCallingEnabled(original_request.Tools, h.cfg)
+	if toolsEnabled && h.cfg.StreamMode {
 		original_request.Stream = false
 	}
 
@@ -132,7 +134,7 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 	var stopSent bool
 	pingSent := false
 
-	if os.Getenv("STREAM_MODE") == "false" {
+	if !h.cfg.StreamMode {
 		original_request.Stream = false
 	}
 	if original_request.Stream {
@@ -141,7 +143,7 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 		c.Writer.Header().Set("Connection", "keep-alive")
 		c.Writer.Header().Set("X-Accel-Buffering", "no")
 	}
-	for i := maxContinueCount(); i > 0; i-- {
+	for i := h.cfg.MaxContinueCount; i > 0; i-- {
 		var continue_info *chatgpt.ContinueInfo
 		result := chatgpt.HandlerDetailedWithOptions(c, response, client, account, uid, translated_request, original_request.Stream, reqModel, chatgpt.HandlerDetailedOptions{
 			Websocket:        wsConn,
@@ -164,7 +166,7 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 				pingTurnStile := turnStile
 				go func() {
 					perr := chatgpt.POSTSentinelPing(pingClient, pingAccount, pingTurnStile, conversationID, lastMsgID, clientState)
-					if os.Getenv("DEBUG_SENTINEL") != "" {
+					if h.cfg.DebugSentinel {
 						fmt.Printf("[sentinel-ping] conv=%s lastMsg=%s err=%v\n", conversationID, lastMsgID, perr)
 					}
 				}()
@@ -320,7 +322,7 @@ func (h *ChatHandler) Responses(c *gin.Context) {
 	}
 
 	var full_response string
-	for i := maxContinueCount(); i > 0; i-- {
+	for i := h.cfg.MaxContinueCount; i > 0; i-- {
 		var continue_info *chatgpt.ContinueInfo
 		var response_part string
 		result := chatgpt.HandlerDetailedWithOptions(c, response, client, account, uid, translated_request, false, reqModel, chatgpt.HandlerDetailedOptions{
@@ -371,7 +373,7 @@ func (h *ChatHandler) Responses(c *gin.Context) {
 
 	output_tokens := util.CountToken(full_response)
 	responsesResponse := officialtypes.NewResponsesResponse(full_response, input_tokens, output_tokens, reqModel)
-	if !responsesRequest.Stream || os.Getenv("STREAM_MODE") == "false" {
+	if !responsesRequest.Stream || !h.cfg.StreamMode {
 		c.JSON(200, responsesResponse)
 		return
 	}
@@ -455,11 +457,9 @@ func (h *ChatHandler) Files(c *gin.Context) {
 // handleToolCalling 工具调用模式的主流程（对齐 initialize/handlers.go:handleToolCalling）
 func (h *ChatHandler) handleToolCalling(c *gin.Context, originalRequest *officialtypes.APIRequest, client **bogdanfinn.TlsClient, account *accounts.Account, clientState **chatgpt.ChatClientState, reqModel *string, uid *string, proxyUrl *string, inputTokens *int) {
 	tools := originalRequest.Tools
-	maxRefusalRetries := 3
-	if v := os.Getenv("REFUSAL_RETRIES"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			maxRefusalRetries = n
-		}
+	maxRefusalRetries := h.cfg.RefusalRetries
+	if maxRefusalRetries <= 0 {
+		maxRefusalRetries = 3
 	}
 
 	baseTranslated := chatgptrequestconverter.ConvertAPIRequest(*originalRequest, account, *proxyUrl, *client)
@@ -526,7 +526,7 @@ func (h *ChatHandler) handleToolCalling(c *gin.Context, originalRequest *officia
 		for i := range calls {
 			calls[i].Index = i
 		}
-		if logPath := os.Getenv("DEBUG_TOOL_LOG"); logPath != "" {
+		if logPath := h.cfg.DebugToolLog; logPath != "" {
 			appendToolDebugLog(logPath, attempt, result.Text, calls)
 		}
 		if len(calls) > 0 {
