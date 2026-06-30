@@ -65,6 +65,9 @@ func InitAccountsFromConfig(
 		}
 		acct.Fingerprint = randomProfile(profilePool)
 		acct.Status = StatusActive
+		if err := acct.InitClient(); err != nil {
+			continue
+		}
 		accounts = append(accounts, acct)
 	}
 
@@ -73,6 +76,9 @@ func InitAccountsFromConfig(
 		acct := NewAccount(uuid.NewString(), TypeFree, s.Token)
 		acct.Fingerprint = randomProfile(profilePool)
 		acct.Status = StatusActive
+		if err := acct.InitClient(); err != nil {
+			continue
+		}
 		accounts = append(accounts, acct)
 	}
 
@@ -83,6 +89,9 @@ func InitAccountsFromConfig(
 			acct := NewAccount(uid, TypeNoAuth, uid)
 			acct.Fingerprint = randomProfile(profilePool)
 			acct.Status = StatusActive
+			if err := acct.InitClient(); err != nil {
+				continue
+			}
 			accounts = append(accounts, acct)
 		}
 	}

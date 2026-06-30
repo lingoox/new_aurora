@@ -2,7 +2,14 @@ package accounts
 
 import (
 	"fmt"
+	"net"
 	"time"
+
+	"aurora/httpclient"
+	"aurora/httpclient/bogdanfinn"
+	"aurora/internal/proxy"
+	tls_client "github.com/bogdanfinn/tls-client"
+	"github.com/bogdanfinn/tls-client/profiles"
 )
 
 // AccountType 账号类型
@@ -71,9 +78,9 @@ type Account struct {
 	TeamUserID string
 
 	// 隔离单元（每个账号独立）
-	Client      interface{}        // *bogdanfinn.TlsClient — 避免 import 循环
-	Proxy       string             // 专属代理 IP
-	Fingerprint BrowserFingerprint // 专属指纹
+	Client      httpclient.AuroraHttpClient // 专属 TLS Client
+	Proxy       string                      // 专属代理 IP
+	Fingerprint BrowserFingerprint          // 专属指纹
 
 	// WSS (free/puid 有, noauth 无)
 	WSSActor interface{} // *WSSActor — 避免 import 循环
@@ -111,5 +118,58 @@ func NewAccount(id string, acctType AccountType, token string) *Account {
 		Token:     token,
 		Status:    StatusPending,
 		CreatedAt: now,
+	}
+}
+
+// InitClient 创建专属 TLS Client
+func (a *Account) InitClient() error {
+	opts := []tls_client.HttpClientOption{
+		tls_client.WithCookieJar(tls_client.NewCookieJar()),
+		tls_client.WithTimeoutSeconds(600),
+	}
+
+	// 1. 绑定指纹画像
+	profile := resolveTLSProfile(a.Fingerprint.TLSProfileName)
+	opts = append(opts, tls_client.WithClientProfile(profile))
+
+	// 2. IPv6 模式：绑定源 IP
+	if proxy.IsIPv6(a.Proxy) {
+		parsed := net.ParseIP(a.Proxy)
+		opts = append(opts, tls_client.WithLocalAddr(net.TCPAddr{IP: parsed}))
+	}
+
+	// 创建底层 client
+	baseClient, err := tls_client.NewHttpClient(tls_client.NewNoopLogger(), opts...)
+	if err != nil {
+		return err
+	}
+	tlsClient := &bogdanfinn.TlsClient{Client: baseClient}
+
+	// 3. IPv4 模式：设代理
+	if !proxy.IsIPv6(a.Proxy) && a.Proxy != "" {
+		if err := tlsClient.SetProxy(a.Proxy); err != nil {
+			return err
+		}
+	}
+
+	a.Client = tlsClient
+	return nil
+}
+
+// resolveTLSProfile 映射指纹画像名到 tls-client profile
+func resolveTLSProfile(name string) profiles.ClientProfile {
+	switch name {
+	case "chrome_146":
+		return profiles.Chrome_146
+	case "safari_16_0":
+		return profiles.Safari_16_0
+	case "safari_ios_18_5":
+		return profiles.Safari_IOS_18_5
+	case "safari_ios_17_0":
+		return profiles.Safari_IOS_17_0
+	case "safari_ipad_15_6":
+		return profiles.Safari_Ipad_15_6
+	default:
+		return profiles.Chrome_146
 	}
 }

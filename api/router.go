@@ -1,7 +1,10 @@
 package api
 
 import (
-	"aurora/initialize"
+	"aurora/internal/accounts"
+	"aurora/internal/config"
+	"aurora/internal/handler"
+
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
@@ -9,8 +12,19 @@ import (
 var router *gin.Engine
 
 func init() {
-	// 初始化gin
-	router = initialize.RegisterRouter()
+	cfg := config.Load()
+	accs := accounts.InitAccountsFromConfig(
+		"access_tokens.txt",
+		"free_tokens.txt",
+		cfg.FreeAccounts,
+		cfg.FreeAccountsNum,
+		accounts.DefaultProfiles,
+	)
+	for _, acct := range accs {
+		_ = acct.InitClient()
+	}
+	accountPool := accounts.NewPool(accs)
+	router = handler.RegisterRouter(accountPool)
 }
 
 func Listen(w http.ResponseWriter, r *http.Request) {
