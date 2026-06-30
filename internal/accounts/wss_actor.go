@@ -42,6 +42,7 @@ func (a *WSSActor) Start() {
 		return
 	}
 	a.started = true
+	a.done = make(chan struct{})
 	go a.run()
 }
 
