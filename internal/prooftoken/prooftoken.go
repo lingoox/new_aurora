@@ -90,6 +90,22 @@ func NewConfig(userAgent string) *Config {
 	}
 }
 
+// NewConfigWithOverrides 与 NewConfig 相同，但用传入值覆盖 ScreenWidth/ScreenHeight/HardwareConcurrency。
+// 用于 Account 指纹画像与 browserfp 全局配置不一致的场景。
+func NewConfigWithOverrides(userAgent string, screenWidth, screenHeight, hwConcurrency int) *Config {
+	cfg := NewConfig(userAgent)
+	if screenWidth > 0 {
+		cfg.ScreenWidth = screenWidth
+	}
+	if screenHeight > 0 {
+		cfg.ScreenHeight = screenHeight
+	}
+	if hwConcurrency > 0 {
+		cfg.HardwareConcurrency = hwConcurrency
+	}
+	return cfg
+}
+
 // randomUUID 生成 v4 UUID (与 crypto/rand 区分)。
 func randomUUID() string {
 	var b [16]byte

@@ -37,7 +37,7 @@ func InitSentinelWithState(client httpclient.AuroraHttpClient, account *accounts
 	if state != nil && state.UserAgent != "" {
 		ua = state.UserAgent
 	}
-	requirementsToken := prooftoken.NewConfig(ua).RequirementsToken()
+	requirementsToken := prooftoken.NewConfigWithOverrides(ua, account.Fingerprint.ScreenWidth, account.Fingerprint.ScreenHeight, account.Fingerprint.HardwareConcurrency).RequirementsToken()
 
 	prepare, status, err := POSTSentinelPrepareWithState(client, account, requirementsToken, state)
 	if err != nil {
@@ -331,6 +331,56 @@ func buildSentinelReqToken(state *ChatClientState) string {
 	return "gAAAAAC" + encoded + "~S"
 }
 
+// buildSentinelReqTokenFromAccount 与 buildSentinelReqToken 相同，
+// 但用传入的 screenWidth/screenHeight/hwConcurrency 覆盖 browserfp 全局配置的对应字段。
+// 用于 Account 指纹画像与 browserfp 不一致的场景。
+func buildSentinelReqTokenFromAccount(state *ChatClientState, screenWidth, screenHeight, hwConcurrency int) string {
+	ua := defaultUserAgent()
+	deviceID := oaiDeviceID
+	if state != nil {
+		if state.UserAgent != "" {
+			ua = state.UserAgent
+		}
+		if state.DeviceID != "" {
+			deviceID = state.DeviceID
+		}
+	}
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	fp := browserfp.Get()
+
+	sw := fp.ScreenWidth
+	sh := fp.ScreenHeight
+	hc := fp.HardwareConcurrency
+	if screenWidth > 0 {
+		sw = screenWidth
+	}
+	if screenHeight > 0 {
+		sh = screenHeight
+	}
+	if hwConcurrency > 0 {
+		hc = hwConcurrency
+	}
+
+	opts := fingerprint.Options{
+		UserAgent:           ua,
+		ScreenWidth:         sw,
+		ScreenHeight:        sh,
+		HardwareConcurrency: hc,
+		JSHeapSizeLimit:     fp.JSHeapSizeLimit,
+		BuildID:             fp.BuildID,
+		Languages:           strings.Split(browserfp.LanguageJoin(fp.Language), ","),
+		Rand:                rng,
+	}
+
+	config := fingerprint.Build25(opts)
+	config[3] = 2      // nonce: req 用 2 (prepare 用 1)
+	config[14] = deviceID
+
+	encoded := prooftoken.EncodeConfig(config)
+	return "gAAAAAC" + encoded + "~S"
+}
+
 // randomReactSuffix 生成类似 React container suffix 的随机字符串。
 func randomReactSuffix() string {
 	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -358,7 +408,7 @@ func POSTSentinelReq(client httpclient.AuroraHttpClient, account *accounts.Accou
 		flow = "conversation"
 	}
 	// 使用与 prepare 相同的指纹格式,但 nonce=2
-	reqToken := buildSentinelReqToken(state)
+	reqToken := buildSentinelReqTokenFromAccount(state, account.Fingerprint.ScreenWidth, account.Fingerprint.ScreenHeight, account.Fingerprint.HardwareConcurrency)
 	apiUrl, targetPath := sentinelURL(account, "/sentinel/req")
 	bodyJSON, err := json.Marshal(map[string]string{
 		"p":    reqToken,
