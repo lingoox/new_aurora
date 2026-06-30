@@ -173,9 +173,8 @@ func (h *ImageHandler) Generations(c *gin.Context) {
 	}
 
 	proxyUrl := account.Proxy
-	secret := createTempSecret(account)
 	client := setupClientWithProxy(proxyUrl)
-	turnStile, status, err := chatgpt.InitSentinel(client, secret, proxyUrl, 0)
+	turnStile, status, err := chatgpt.InitSentinel(client, account, proxyUrl, 0)
 	if err != nil {
 		c.JSON(status, gin.H{
 			"message": err.Error(),
@@ -203,7 +202,7 @@ func (h *ImageHandler) Generations(c *gin.Context) {
 				ProgressText: fmt.Sprintf("Generating image %d/%d ...", i+1, imageRequest.N),
 			})
 		}
-		imageResults, upstreamText, err := chatgpt.GeneratePictureConversationImages(client, secret, turnStile, imageRequest.Prompt, imageRequest.Model, proxyUrl)
+		imageResults, upstreamText, err := chatgpt.GeneratePictureConversationImages(client, account, turnStile, imageRequest.Prompt, imageRequest.Model, proxyUrl)
 		if err != nil {
 			if stream {
 				writeImageStreamEvent(c, "image.generation.error", gin.H{
@@ -231,7 +230,7 @@ func (h *ImageHandler) Generations(c *gin.Context) {
 				if imageResult.B64JSON != "" {
 					item.B64JSON = imageResult.B64JSON
 				} else if imageResult.URL != "" {
-					imageBytes, err := chatgpt.DownloadImageBytes(client, imageResult.URL, secret)
+					imageBytes, err := chatgpt.DownloadImageBytes(client, imageResult.URL, account)
 					if err != nil {
 						if stream {
 							writeImageStreamEvent(c, "image.generation.error", gin.H{
@@ -880,9 +879,8 @@ func (h *ImageHandler) runImageEditFlow(c *gin.Context, asVariation bool) {
 	}
 
 	proxyUrl := account.Proxy
-	secret := createTempSecret(account)
 	client := setupClientWithProxy(proxyUrl)
-	turnStile, status, err := chatgpt.InitSentinel(client, secret, proxyUrl, 0)
+	turnStile, status, err := chatgpt.InitSentinel(client, account, proxyUrl, 0)
 	if err != nil {
 		c.JSON(status, gin.H{
 			"message": err.Error(),
@@ -900,7 +898,7 @@ func (h *ImageHandler) runImageEditFlow(c *gin.Context, asVariation bool) {
 	// 1) 上传所有源图
 	references := make([]chatgpt.ImageEditReference, 0, len(imageSources))
 	for idx, src := range imageSources {
-		uploaded, upStatus, upErr := chatgpt.UploadFile(client, secret, proxyUrl, src.Filename, src.ContentType, src.Data)
+		uploaded, upStatus, upErr := chatgpt.UploadFile(client, account, proxyUrl, src.Filename, src.ContentType, src.Data)
 		if upErr != nil {
 			if stream {
 				writeImageStreamEvent(c, "image.generation.error", gin.H{
@@ -942,7 +940,7 @@ func (h *ImageHandler) runImageEditFlow(c *gin.Context, asVariation bool) {
 				ProgressText: fmt.Sprintf("Generating image %d/%d ...", i+1, n),
 			})
 		}
-		imageResults, upstreamText, err := chatgpt.GeneratePictureConversationImagesWithReferences(client, secret, turnStile, prompt, model, proxyUrl, references)
+		imageResults, upstreamText, err := chatgpt.GeneratePictureConversationImagesWithReferences(client, account, turnStile, prompt, model, proxyUrl, references)
 		if err != nil {
 			if stream {
 				writeImageStreamEvent(c, "image.generation.error", gin.H{
@@ -970,7 +968,7 @@ func (h *ImageHandler) runImageEditFlow(c *gin.Context, asVariation bool) {
 				if imageResult.B64JSON != "" {
 					item.B64JSON = imageResult.B64JSON
 				} else if imageResult.URL != "" {
-					imageBytes, err := chatgpt.DownloadImageBytes(client, imageResult.URL, secret)
+					imageBytes, err := chatgpt.DownloadImageBytes(client, imageResult.URL, account)
 					if err != nil {
 						if stream {
 							writeImageStreamEvent(c, "image.generation.error", gin.H{

@@ -2,7 +2,7 @@ package chatgpt
 
 import (
 	"aurora/httpclient"
-	"aurora/internal/tokens"
+	"aurora/internal/accounts"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,13 +26,13 @@ func nextChatWebsocketID() int64 {
 	return atomic.AddInt64(&chatWebsocketIDCounter, 1)
 }
 
-func getChatWebsocketURL(client httpclient.AuroraHttpClient, secret *tokens.Secret) (string, error) {
-	return getChatWebsocketURLWithState(client, secret, nil)
+func getChatWebsocketURL(client httpclient.AuroraHttpClient, account *accounts.Account) (string, error) {
+	return getChatWebsocketURLWithState(client, account, nil)
 }
 
-func getChatWebsocketURLWithState(client httpclient.AuroraHttpClient, secret *tokens.Secret, state *ChatClientState) (string, error) {
-	apiURL, targetPath := conversationURL(secret, "/celsius/ws/user")
-	header := conversationHeadersWithState(secret, nil, "*/*", targetPath, "", "", state)
+func getChatWebsocketURLWithState(client httpclient.AuroraHttpClient, account *accounts.Account, state *ChatClientState) (string, error) {
+	apiURL, targetPath := conversationURL(account, "/celsius/ws/user")
+	header := conversationHeadersWithState(account, nil, "*/*", targetPath, "", "", state)
 	response, err := client.Request(http.MethodGet, apiURL, header, nil, nil)
 	if err != nil {
 		return "", err
@@ -55,16 +55,16 @@ func getChatWebsocketURLWithState(client httpclient.AuroraHttpClient, secret *to
 	return result.WebsocketURL, nil
 }
 
-func DialChatWebsocket(client httpclient.AuroraHttpClient, secret *tokens.Secret) (*websocket.Conn, error) {
-	return DialChatWebsocketWithState(client, secret, nil)
+func DialChatWebsocket(client httpclient.AuroraHttpClient, account *accounts.Account) (*websocket.Conn, error) {
+	return DialChatWebsocketWithState(client, account, nil)
 }
 
-func DialChatWebsocketWithState(client httpclient.AuroraHttpClient, secret *tokens.Secret, state *ChatClientState) (*websocket.Conn, error) {
-	return DialChatWebsocketWithStateAndProxy(client, secret, state, "")
+func DialChatWebsocketWithState(client httpclient.AuroraHttpClient, account *accounts.Account, state *ChatClientState) (*websocket.Conn, error) {
+	return DialChatWebsocketWithStateAndProxy(client, account, state, "")
 }
 
-func DialChatWebsocketWithStateAndProxy(client httpclient.AuroraHttpClient, secret *tokens.Secret, state *ChatClientState, proxy string) (*websocket.Conn, error) {
-	wsURL, err := getChatWebsocketURLWithState(client, secret, state)
+func DialChatWebsocketWithStateAndProxy(client httpclient.AuroraHttpClient, account *accounts.Account, state *ChatClientState, proxy string) (*websocket.Conn, error) {
+	wsURL, err := getChatWebsocketURLWithState(client, account, state)
 	if err != nil {
 		return nil, err
 	}

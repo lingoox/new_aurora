@@ -3,7 +3,7 @@ package chatgpt
 import (
 	"aurora/conversion/response/chatgpt"
 	"aurora/httpclient"
-	"aurora/internal/tokens"
+	"aurora/internal/accounts"
 	"aurora/internal/types"
 	chatgpt_types "aurora/internal/types/chatgpt"
 	official_types "aurora/internal/types/official"
@@ -563,19 +563,19 @@ type ImageGenerationResult struct {
 	B64JSON string
 }
 
-func GetImageSource(client httpclient.AuroraHttpClient, wg *sync.WaitGroup, url string, prompt string, secret *tokens.Secret, idx int, imgSource []string) {
+func GetImageSource(client httpclient.AuroraHttpClient, wg *sync.WaitGroup, url string, prompt string, account *accounts.Account, idx int, imgSource []string) {
 	defer wg.Done()
 	header := make(httpclient.AuroraHeaders)
 	// Clear cookies
-	if secret != nil && secret.PUID != "" {
-		header.Set("Cookie", "_puid="+secret.PUID+";")
+	if account != nil && account.PUID != "" {
+		header.Set("Cookie", "_puid="+account.PUID+";")
 	}
 	header.Set("User-Agent", defaultUserAgent())
 	header.Set("Accept", "*/*")
-	if secret != nil && secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account != nil && account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	response, err := client.Request(http.MethodGet, url, header, nil, nil)
 	if err != nil {
 		return
@@ -589,17 +589,17 @@ func GetImageSource(client httpclient.AuroraHttpClient, wg *sync.WaitGroup, url 
 	imgSource[idx] = "[![image](" + file_info.DownloadURL + " \"" + prompt + "\")](" + file_info.DownloadURL + ")"
 }
 
-func GetImageDownloadURL(client httpclient.AuroraHttpClient, url string, secret *tokens.Secret) (string, error) {
+func GetImageDownloadURL(client httpclient.AuroraHttpClient, url string, account *accounts.Account) (string, error) {
 	header := make(httpclient.AuroraHeaders)
-	if secret != nil && secret.PUID != "" {
-		header.Set("Cookie", "_puid="+secret.PUID+";")
+	if account != nil && account.PUID != "" {
+		header.Set("Cookie", "_puid="+account.PUID+";")
 	}
 	header.Set("User-Agent", defaultUserAgent())
 	header.Set("Accept", "*/*")
-	if secret != nil && secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account != nil && account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	response, err := client.Request(http.MethodGet, url, header, nil, nil)
 	if err != nil {
 		return "", err
@@ -621,17 +621,17 @@ func GetImageDownloadURL(client httpclient.AuroraHttpClient, url string, secret 
 	return info.DownloadURL, nil
 }
 
-func DownloadImageBytes(client httpclient.AuroraHttpClient, url string, secret *tokens.Secret) ([]byte, error) {
+func DownloadImageBytes(client httpclient.AuroraHttpClient, url string, account *accounts.Account) ([]byte, error) {
 	header := make(httpclient.AuroraHeaders)
-	if secret != nil && secret.PUID != "" {
-		header.Set("Cookie", "_puid="+secret.PUID+";")
+	if account != nil && account.PUID != "" {
+		header.Set("Cookie", "_puid="+account.PUID+";")
 	}
 	header.Set("User-Agent", defaultUserAgent())
 	header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
-	if secret != nil && secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account != nil && account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	response, err := client.Request(http.MethodGet, url, header, nil, nil)
 	if err != nil {
 		return nil, err
@@ -678,7 +678,7 @@ func fileDownloadBaseURL() string {
 	return strings.TrimRight(apiURL, "/") + "/"
 }
 
-func appendAssetPointerResult(client httpclient.AuroraHttpClient, secret *tokens.Secret, results *[]ImageGenerationResult, seen map[string]bool, assetPointer string) {
+func appendAssetPointerResult(client httpclient.AuroraHttpClient, account *accounts.Account, results *[]ImageGenerationResult, seen map[string]bool, assetPointer string) {
 	if assetPointer == "" {
 		return
 	}
@@ -686,25 +686,25 @@ func appendAssetPointerResult(client httpclient.AuroraHttpClient, secret *tokens
 	if len(assetParts) != 2 || assetParts[1] == "" {
 		return
 	}
-	downloadURL, err := GetImageDownloadURL(client, fileDownloadBaseURL()+assetParts[1]+"/download", secret)
+	downloadURL, err := GetImageDownloadURL(client, fileDownloadBaseURL()+assetParts[1]+"/download", account)
 	if err != nil {
 		return
 	}
 	addImageResult(results, seen, ImageGenerationResult{URL: downloadURL})
 }
 
-func appendFileIDResult(client httpclient.AuroraHttpClient, secret *tokens.Secret, results *[]ImageGenerationResult, seen map[string]bool, fileID string) {
+func appendFileIDResult(client httpclient.AuroraHttpClient, account *accounts.Account, results *[]ImageGenerationResult, seen map[string]bool, fileID string) {
 	if fileID == "" {
 		return
 	}
-	downloadURL, err := GetImageDownloadURL(client, fileDownloadBaseURL()+fileID+"/download", secret)
+	downloadURL, err := GetImageDownloadURL(client, fileDownloadBaseURL()+fileID+"/download", account)
 	if err != nil {
 		return
 	}
 	addImageResult(results, seen, ImageGenerationResult{URL: downloadURL})
 }
 
-func collectImageResultsFromValue(client httpclient.AuroraHttpClient, secret *tokens.Secret, value interface{}, results *[]ImageGenerationResult, seen map[string]bool) {
+func collectImageResultsFromValue(client httpclient.AuroraHttpClient, account *accounts.Account, value interface{}, results *[]ImageGenerationResult, seen map[string]bool) {
 	switch item := value.(type) {
 	case map[string]interface{}:
 		if result, ok := item["result"].(string); ok && result != "" {
@@ -714,12 +714,12 @@ func collectImageResultsFromValue(client httpclient.AuroraHttpClient, secret *to
 		}
 		for _, key := range []string{"asset_pointer", "assetPointer"} {
 			if assetPointer, ok := item[key].(string); ok {
-				appendAssetPointerResult(client, secret, results, seen, assetPointer)
+				appendAssetPointerResult(client, account,results, seen, assetPointer)
 			}
 		}
 		for _, key := range []string{"file_id", "fileId", "id"} {
 			if fileID, ok := item[key].(string); ok && strings.HasPrefix(fileID, "file-") {
-				appendFileIDResult(client, secret, results, seen, fileID)
+				appendFileIDResult(client, account,results, seen, fileID)
 			}
 		}
 		for _, key := range []string{"download_url", "downloadUrl", "url"} {
@@ -728,11 +728,11 @@ func collectImageResultsFromValue(client httpclient.AuroraHttpClient, secret *to
 			}
 		}
 		for _, nested := range item {
-			collectImageResultsFromValue(client, secret, nested, results, seen)
+			collectImageResultsFromValue(client, account,nested, results, seen)
 		}
 	case []interface{}:
 		for _, nested := range item {
-			collectImageResultsFromValue(client, secret, nested, results, seen)
+			collectImageResultsFromValue(client, account,nested, results, seen)
 		}
 	case string:
 		if b64, isDataImage := stripDataImagePrefix(item); isDataImage {
@@ -741,7 +741,7 @@ func collectImageResultsFromValue(client httpclient.AuroraHttpClient, secret *to
 	}
 }
 
-func CollectImageResults(response *http.Response, client httpclient.AuroraHttpClient, secret *tokens.Secret) ([]ImageGenerationResult, string, string, error) {
+func CollectImageResults(response *http.Response, client httpclient.AuroraHttpClient, account *accounts.Account) ([]ImageGenerationResult, string, string, error) {
 	reader := bufio.NewReader(response.Body)
 	var originalResponse chatgpt_types.ChatGPTResponse
 	var convID string
@@ -767,7 +767,7 @@ func CollectImageResults(response *http.Response, client httpclient.AuroraHttpCl
 		originalResponse.Message.ID = ""
 		var raw map[string]interface{}
 		if err := json.Unmarshal([]byte(line), &raw); err == nil {
-			collectImageResultsFromValue(client, secret, raw, &results, seen)
+			collectImageResultsFromValue(client, account,raw, &results, seen)
 		}
 		if err := json.Unmarshal([]byte(line), &originalResponse); err != nil {
 			continue
@@ -800,32 +800,32 @@ func CollectImageResults(response *http.Response, client httpclient.AuroraHttpCl
 			if err := json.Unmarshal(jsonItem, &dalleContent); err != nil || dalleContent.AssetPointer == "" {
 				continue
 			}
-			appendAssetPointerResult(client, secret, &results, seen, dalleContent.AssetPointer)
+			appendAssetPointerResult(client, account,&results, seen, dalleContent.AssetPointer)
 		}
 	}
 	return results, convID, strings.Join(textParts, ""), nil
 }
 
-func conversationFetchHeaders(secret *tokens.Secret) httpclient.AuroraHeaders {
+func conversationFetchHeaders(account *accounts.Account) httpclient.AuroraHeaders {
 	header := createBaseHeader()
 	header.Set("Accept", "application/json")
 	header.Set("Content-Type", "application/json")
-	if secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	if secret.PUID != "" {
-		header.Set("Cookie", "_puid="+secret.PUID+";")
+	if account.PUID != "" {
+		header.Set("Cookie", "_puid="+account.PUID+";")
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	return header
 }
 
-func getConversation(client httpclient.AuroraHttpClient, secret *tokens.Secret, conversationID string) (map[string]interface{}, error) {
+func getConversation(client httpclient.AuroraHttpClient, account *accounts.Account, conversationID string) (map[string]interface{}, error) {
 	if conversationID == "" {
 		return nil, fmt.Errorf("missing conversation id")
 	}
 	reqURL := BaseURL + "/conversation/" + conversationID
-	response, err := client.Request(http.MethodGet, reqURL, conversationFetchHeaders(secret), nil, nil)
+	response, err := client.Request(http.MethodGet, reqURL, conversationFetchHeaders(account), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -844,10 +844,10 @@ func getConversation(client httpclient.AuroraHttpClient, secret *tokens.Secret, 
 	return result, nil
 }
 
-func collectImageResultsFromConversation(client httpclient.AuroraHttpClient, secret *tokens.Secret, conversation map[string]interface{}) []ImageGenerationResult {
+func collectImageResultsFromConversation(client httpclient.AuroraHttpClient, account *accounts.Account, conversation map[string]interface{}) []ImageGenerationResult {
 	var results []ImageGenerationResult
 	seen := make(map[string]bool)
-	collectImageResultsFromValue(client, secret, conversation, &results, seen)
+	collectImageResultsFromValue(client, account,conversation, &results, seen)
 	return results
 }
 
@@ -884,7 +884,7 @@ func findImageGenerationError(value interface{}) string {
 	return ""
 }
 
-func PollImageResults(client httpclient.AuroraHttpClient, secret *tokens.Secret, conversationID string, initial []ImageGenerationResult) ([]ImageGenerationResult, error) {
+func PollImageResults(client httpclient.AuroraHttpClient, account *accounts.Account, conversationID string, initial []ImageGenerationResult) ([]ImageGenerationResult, error) {
 	if len(initial) > 0 || conversationID == "" {
 		return initial, nil
 	}
@@ -893,7 +893,7 @@ func PollImageResults(client httpclient.AuroraHttpClient, secret *tokens.Secret,
 		if i > 0 {
 			time.Sleep(2 * time.Second)
 		}
-		conversation, err := getConversation(client, secret, conversationID)
+		conversation, err := getConversation(client, account,conversationID)
 		if err != nil {
 			lastErr = err
 			continue
@@ -901,7 +901,7 @@ func PollImageResults(client httpclient.AuroraHttpClient, secret *tokens.Secret,
 		if message := findImageGenerationError(conversation); message != "" {
 			return nil, errors.New(message)
 		}
-		results := collectImageResultsFromConversation(client, secret, conversation)
+		results := collectImageResultsFromConversation(client, account,conversation)
 		if len(results) > 0 {
 			return results, nil
 		}
@@ -922,11 +922,11 @@ func imageModelSlug(model string) string {
 	return model
 }
 
-func imageConversationHeaders(secret *tokens.Secret, turnStile *TurnStile, conduitToken, accept string) httpclient.AuroraHeaders {
-	return imageConversationHeadersWithState(secret, turnStile, conduitToken, accept, nil)
+func imageConversationHeaders(account *accounts.Account, turnStile *TurnStile, conduitToken, accept string) httpclient.AuroraHeaders {
+	return imageConversationHeadersWithState(account, turnStile, conduitToken, accept, nil)
 }
 
-func imageConversationHeadersWithState(secret *tokens.Secret, turnStile *TurnStile, conduitToken, accept string, state *ChatClientState) httpclient.AuroraHeaders {
+func imageConversationHeadersWithState(account *accounts.Account, turnStile *TurnStile, conduitToken, accept string, state *ChatClientState) httpclient.AuroraHeaders {
 	header := createBaseHeaderForState(state)
 	header.Set("Content-Type", "application/json")
 	header.Set("Accept", accept)
@@ -943,17 +943,17 @@ func imageConversationHeadersWithState(secret *tokens.Secret, turnStile *TurnSti
 	if accept == "text/event-stream" {
 		header.Set("X-Oai-Turn-Trace-Id", uuid.NewString())
 	}
-	if secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	if secret.PUID != "" {
-		header.Set("Cookie", "_puid="+secret.PUID+";")
+	if account.PUID != "" {
+		header.Set("Cookie", "_puid="+account.PUID+";")
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	return header
 }
 
-func prepareImageConversation(client httpclient.AuroraHttpClient, secret *tokens.Secret, turnStile *TurnStile, prompt, model string, state *ChatClientState) (string, error) {
+func prepareImageConversation(client httpclient.AuroraHttpClient, account *accounts.Account, turnStile *TurnStile, prompt, model string, state *ChatClientState) (string, error) {
 	parentMessageID := "client-created-root"
 	if state != nil && state.ParentMessageID != "" {
 		parentMessageID = state.ParentMessageID
@@ -981,7 +981,7 @@ func prepareImageConversation(client httpclient.AuroraHttpClient, secret *tokens
 	if err != nil {
 		return "", err
 	}
-	response, err := client.Request(http.MethodPost, BaseURL+"/f/conversation/prepare", imageConversationHeadersWithState(secret, turnStile, "", "*/*", state), nil, bytes.NewReader(bodyJSON))
+	response, err := client.Request(http.MethodPost, BaseURL+"/f/conversation/prepare", imageConversationHeadersWithState(account, turnStile, "", "*/*", state), nil, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return "", err
 	}
@@ -1005,12 +1005,12 @@ func prepareImageConversation(client httpclient.AuroraHttpClient, secret *tokens
 	return result.ConduitToken, nil
 }
 
-func GeneratePictureConversationImages(client httpclient.AuroraHttpClient, secret *tokens.Secret, turnStile *TurnStile, prompt, model, proxy string) ([]ImageGenerationResult, string, error) {
+func GeneratePictureConversationImages(client httpclient.AuroraHttpClient, account *accounts.Account, turnStile *TurnStile, prompt, model, proxy string) ([]ImageGenerationResult, string, error) {
 	if proxy != "" {
 		client.SetProxy(proxy)
 	}
 	state := NewChatClientState()
-	conduitToken, err := prepareImageConversation(client, secret, turnStile, prompt, model, state)
+	conduitToken, err := prepareImageConversation(client, account,turnStile, prompt, model, state)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1051,7 +1051,7 @@ func GeneratePictureConversationImages(client httpclient.AuroraHttpClient, secre
 		return nil, "", err
 	}
 
-	response, err := client.Request(http.MethodPost, BaseURL+"/f/conversation", imageConversationHeadersWithState(secret, turnStile, conduitToken, "text/event-stream", state), nil, bytes.NewReader(bodyJSON))
+	response, err := client.Request(http.MethodPost, BaseURL+"/f/conversation", imageConversationHeadersWithState(account, turnStile, conduitToken, "text/event-stream", state), nil, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return nil, "", err
 	}
@@ -1060,11 +1060,11 @@ func GeneratePictureConversationImages(client httpclient.AuroraHttpClient, secre
 		body, _ := io.ReadAll(response.Body)
 		return nil, "", fmt.Errorf("image conversation failed: %s", string(body))
 	}
-	results, conversationID, upstreamText, err := CollectImageResults(response, client, secret)
+	results, conversationID, upstreamText, err := CollectImageResults(response, client, account)
 	if err != nil {
 		return results, upstreamText, err
 	}
-	results, err = PollImageResults(client, secret, conversationID, results)
+	results, err = PollImageResults(client, account,conversationID, results)
 	if err != nil {
 		return results, upstreamText, err
 	}
@@ -1086,12 +1086,12 @@ type ImageEditReference struct {
 // 携带已上传的源图(image_asset_pointer + attachments)进入对话,
 // 用于实现 OpenAI 兼容的 /v1/images/edits 和 /v1/images/variations。
 // 当 references 为空时,行为等价于 GeneratePictureConversationImages。
-func GeneratePictureConversationImagesWithReferences(client httpclient.AuroraHttpClient, secret *tokens.Secret, turnStile *TurnStile, prompt, model, proxy string, references []ImageEditReference) ([]ImageGenerationResult, string, error) {
+func GeneratePictureConversationImagesWithReferences(client httpclient.AuroraHttpClient, account *accounts.Account, turnStile *TurnStile, prompt, model, proxy string, references []ImageEditReference) ([]ImageGenerationResult, string, error) {
 	if proxy != "" {
 		client.SetProxy(proxy)
 	}
 	state := NewChatClientState()
-	conduitToken, err := prepareImageConversation(client, secret, turnStile, prompt, model, state)
+	conduitToken, err := prepareImageConversation(client, account,turnStile, prompt, model, state)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1187,7 +1187,7 @@ func GeneratePictureConversationImagesWithReferences(client httpclient.AuroraHtt
 		return nil, "", err
 	}
 
-	response, err := client.Request(http.MethodPost, BaseURL+"/f/conversation", imageConversationHeadersWithState(secret, turnStile, conduitToken, "text/event-stream", state), nil, bytes.NewReader(bodyJSON))
+	response, err := client.Request(http.MethodPost, BaseURL+"/f/conversation", imageConversationHeadersWithState(account, turnStile, conduitToken, "text/event-stream", state), nil, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return nil, "", err
 	}
@@ -1196,24 +1196,24 @@ func GeneratePictureConversationImagesWithReferences(client httpclient.AuroraHtt
 		body, _ := io.ReadAll(response.Body)
 		return nil, "", fmt.Errorf("image conversation failed: %s", string(body))
 	}
-	results, conversationID, upstreamText, err := CollectImageResults(response, client, secret)
+	results, conversationID, upstreamText, err := CollectImageResults(response, client, account)
 	if err != nil {
 		return results, upstreamText, err
 	}
-	results, err = PollImageResults(client, secret, conversationID, results)
+	results, err = PollImageResults(client, account,conversationID, results)
 	if err != nil {
 		return results, upstreamText, err
 	}
 	return results, upstreamText, nil
 }
 
-func Handler(c *gin.Context, response *http.Response, client httpclient.AuroraHttpClient, secret *tokens.Secret, uuid string, translated_request chatgpt_types.ChatGPTRequest, stream bool, model string) (string, *ContinueInfo) {
-	result := HandlerDetailed(c, response, client, secret, uuid, translated_request, stream, model)
+func Handler(c *gin.Context, response *http.Response, client httpclient.AuroraHttpClient, account *accounts.Account, uuid string, translated_request chatgpt_types.ChatGPTRequest, stream bool, model string) (string, *ContinueInfo) {
+	result := HandlerDetailed(c, response, client, account,uuid, translated_request, stream, model)
 	return result.Text, result.Continue
 }
 
-func HandlerDetailed(c *gin.Context, response *http.Response, client httpclient.AuroraHttpClient, secret *tokens.Secret, uuid string, translated_request chatgpt_types.ChatGPTRequest, stream bool, model string) HandlerResult {
-	return HandlerDetailedWithWebsocket(c, response, client, secret, uuid, translated_request, stream, model, nil)
+func HandlerDetailed(c *gin.Context, response *http.Response, client httpclient.AuroraHttpClient, account *accounts.Account, uuid string, translated_request chatgpt_types.ChatGPTRequest, stream bool, model string) HandlerResult {
+	return HandlerDetailedWithWebsocket(c, response, client, account,uuid, translated_request, stream, model, nil)
 }
 
 type HandlerDetailedOptions struct {
@@ -1229,11 +1229,11 @@ type HandlerDetailedOptions struct {
 	Tools []official_types.Tool
 }
 
-func HandlerDetailedWithWebsocket(c *gin.Context, response *http.Response, client httpclient.AuroraHttpClient, secret *tokens.Secret, uuid string, translated_request chatgpt_types.ChatGPTRequest, stream bool, model string, wsConn *websocket.Conn) HandlerResult {
-	return HandlerDetailedWithOptions(c, response, client, secret, uuid, translated_request, stream, model, HandlerDetailedOptions{Websocket: wsConn})
+func HandlerDetailedWithWebsocket(c *gin.Context, response *http.Response, client httpclient.AuroraHttpClient, account *accounts.Account, uuid string, translated_request chatgpt_types.ChatGPTRequest, stream bool, model string, wsConn *websocket.Conn) HandlerResult {
+	return HandlerDetailedWithOptions(c, response, client, account,uuid, translated_request, stream, model, HandlerDetailedOptions{Websocket: wsConn})
 }
 
-func HandlerDetailedWithOptions(c *gin.Context, response *http.Response, client httpclient.AuroraHttpClient, secret *tokens.Secret, uuid string, translated_request chatgpt_types.ChatGPTRequest, stream bool, model string, options HandlerDetailedOptions) HandlerResult {
+func HandlerDetailedWithOptions(c *gin.Context, response *http.Response, client httpclient.AuroraHttpClient, account *accounts.Account, uuid string, translated_request chatgpt_types.ChatGPTRequest, stream bool, model string, options HandlerDetailedOptions) HandlerResult {
 	if model == "" {
 		model = translated_request.Model
 	}
@@ -1245,9 +1245,9 @@ func HandlerDetailedWithOptions(c *gin.Context, response *http.Response, client 
 
 	// Create a bufio.Reader from the response body
 	reader := bufio.NewReader(response.Body)
-	if stream && client != nil && secret != nil {
+	if stream && client != nil && account != nil {
 		if wsConn == nil {
-			if conn, err := DialChatWebsocketWithStateAndProxy(client, secret, options.ClientState, options.ProxyURL); err == nil {
+			if conn, err := DialChatWebsocketWithStateAndProxy(client, account,options.ClientState, options.ProxyURL); err == nil {
 				wsConn = conn
 				defer wsConn.Close()
 			}
@@ -1313,7 +1313,7 @@ func HandlerDetailedWithOptions(c *gin.Context, response *http.Response, client 
 			convId = cid
 		}
 		events := artifactState.ObserveRaw(raw, convId)
-		emitSentinels(materializeArtifactEvents(client, secret, convId, events, artifactConfig))
+		emitSentinels(materializeArtifactEvents(client, account,convId, events, artifactConfig))
 		if artifactState.LastAssistantMsgID != "" {
 			assistantMessageID = artifactState.LastAssistantMsgID
 		}
@@ -1341,7 +1341,7 @@ func HandlerDetailedWithOptions(c *gin.Context, response *http.Response, client 
 		}
 	}
 	finalizeArtifacts := func() {
-		emitSentinels(materializeArtifactEvents(client, secret, convId, artifactState.Finalize(), artifactConfig))
+		emitSentinels(materializeArtifactEvents(client, account,convId, artifactState.Finalize(), artifactConfig))
 	}
 readLoop:
 	for {
@@ -1582,7 +1582,7 @@ readLoop:
 					if attr == "" {
 						u, _ := url.Parse(citation.Metadata.URL)
 						BaseURL := u.Scheme + "://" + u.Host + "/"
-						attr = getURLAttribution(client, secret, BaseURL)
+						attr = getURLAttribution(client, account,BaseURL)
 						if attr != "" {
 							urlAttrMap[citation.Metadata.URL] = attr
 						}
@@ -1614,7 +1614,7 @@ readLoop:
 					}
 					url := apiUrl + strings.Split(dalle_content.AssetPointer, "//")[1] + "/download"
 					wg.Add(1)
-					go GetImageSource(client, &wg, url, dalle_content.Metadata.Dalle.Prompt, secret, index, imgSource)
+					go GetImageSource(client, &wg, url, dalle_content.Metadata.Dalle.Prompt, account,index, imgSource)
 				}
 				wg.Wait()
 				translated_response := official_types.NewChatCompletionChunk(strings.Join(imgSource, ""), model)
@@ -1889,19 +1889,19 @@ func HandlerTTS(response *http.Response, input string) (string, string) {
 	return "", ""
 }
 
-func getTTSBlobFromURL(client httpclient.AuroraHttpClient, secret *tokens.Secret, reqURL string) ([]byte, int, error) {
+func getTTSBlobFromURL(client httpclient.AuroraHttpClient, account *accounts.Account, reqURL string) ([]byte, int, error) {
 	header := createBaseHeader()
 	header.Set("Accept", "audio/*,*/*")
-	if !secret.IsFree && secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account.Type == accounts.TypePUID && account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	if secret.IsFree {
-		header.Set("Oai-Device-Id", secret.Token)
+	if account.Type != accounts.TypePUID {
+		header.Set("Oai-Device-Id", account.Token)
 	}
-	if secret.PUID != "" {
-		header.Set("Cookie", "_puid="+secret.PUID+";")
+	if account.PUID != "" {
+		header.Set("Cookie", "_puid="+account.PUID+";")
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	response, err := client.Request(http.MethodGet, reqURL, header, nil, nil)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -1928,7 +1928,7 @@ func parseTTSDownloadURL(blob []byte) string {
 	return info.URL
 }
 
-func GetTTS(client httpclient.AuroraHttpClient, secret *tokens.Secret, msgId, convId, voice, format, proxy string) ([]byte, int, error) {
+func GetTTS(client httpclient.AuroraHttpClient, account *accounts.Account, msgId, convId, voice, format, proxy string) ([]byte, int, error) {
 	if proxy != "" {
 		client.SetProxy(proxy)
 	}
@@ -1938,16 +1938,16 @@ func GetTTS(client httpclient.AuroraHttpClient, secret *tokens.Secret, msgId, co
 	params.Set("voice", voice)
 	params.Set("format", format)
 	var reqUrl string
-	if secret.IsFree {
+	if account.Type != accounts.TypePUID {
 		reqUrl = strings.Replace(BaseURL, "backend-api", "backend-anon", 1) + "/synthesize?" + params.Encode()
 	} else {
 		reqUrl = BaseURL + "/synthesize?" + params.Encode()
 	}
 
-	blob, status, err := getTTSBlobFromURL(client, secret, reqUrl)
+	blob, status, err := getTTSBlobFromURL(client, account,reqUrl)
 	if err == nil {
 		if downloadURL := parseTTSDownloadURL(blob); downloadURL != "" {
-			return getTTSBlobFromURL(client, secret, downloadURL)
+			return getTTSBlobFromURL(client, account,downloadURL)
 		}
 		return blob, status, nil
 	}
@@ -1956,33 +1956,33 @@ func GetTTS(client httpclient.AuroraHttpClient, secret *tokens.Secret, msgId, co
 	// first synthesize URL shape. If the error body still contains a download URL,
 	// honor it before surfacing the failure.
 	if downloadURL := parseTTSDownloadURL(blob); downloadURL != "" {
-		return getTTSBlobFromURL(client, secret, downloadURL)
+		return getTTSBlobFromURL(client, account,downloadURL)
 	}
 	return nil, status, err
 }
 
-func RemoveConversation(client httpclient.AuroraHttpClient, secret *tokens.Secret, id string, proxy string) {
+func RemoveConversation(client httpclient.AuroraHttpClient, account *accounts.Account, id string, proxy string) {
 	if proxy != "" {
 		client.SetProxy(proxy)
 	}
 	var url string
-	if secret.IsFree {
+	if account.Type != accounts.TypePUID {
 		url = strings.Replace(BaseURL, "backend-api", "backend-anon", 1) + "/conversation/" + id
 	} else {
 		url = BaseURL + "/conversation/" + id
 	}
 	header := createBaseHeader()
 	header.Set("Content-Type", "application/json")
-	if !secret.IsFree && secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account.Type == accounts.TypePUID && account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	if secret.IsFree {
-		header.Set("Oai-Device-Id", secret.Token)
+	if account.Type != accounts.TypePUID {
+		header.Set("Oai-Device-Id", account.Token)
 	}
-	if secret.PUID != "" {
-		header.Set("Cookie", "_puid="+secret.PUID+";")
+	if account.PUID != "" {
+		header.Set("Cookie", "_puid="+account.PUID+";")
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	payload := bytes.NewBuffer([]byte(`{"is_visible":false}`))
 	response, err := client.Request(http.MethodPatch, url, header, nil, payload)
 	if err != nil {
@@ -1998,18 +1998,18 @@ type urlAttr struct {
 	Attribution string `json:"attribution"`
 }
 
-func getURLAttribution(client httpclient.AuroraHttpClient, secret *tokens.Secret, url string) string {
+func getURLAttribution(client httpclient.AuroraHttpClient, account *accounts.Account, url string) string {
 	requestURL := BaseURL + "/attributions"
 	payload := bytes.NewBuffer([]byte(`{"urls":["` + url + `"]}`))
 	header := createBaseHeader()
-	if secret != nil && secret.PUID != "" {
-		header.Set("Cookie", "_puid="+secret.PUID+";")
+	if account != nil && account.PUID != "" {
+		header.Set("Cookie", "_puid="+account.PUID+";")
 	}
 	header.Set("Content-Type", "application/json")
-	if secret != nil && secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account != nil && account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	response, err := client.Request(http.MethodPost, requestURL, header, nil, payload)
 	if err != nil {
 		return ""

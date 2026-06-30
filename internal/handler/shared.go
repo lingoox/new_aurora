@@ -13,7 +13,6 @@ import (
 	"aurora/httpclient/bogdanfinn"
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
-	"aurora/internal/tokens"
 	chatgpt_types "aurora/internal/types/chatgpt"
 	officialtypes "aurora/internal/types/official"
 	"aurora/util"
@@ -116,29 +115,28 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, needsPaid bool) (*accou
 // sentinel → init → ws → prepare → POST
 //
 // 对齐 initialize/handlers.go:postConversationGptClientOrder
-// 使用 tokens.Secret 桥接（后续统一改为 *Account）
-func conversationClientOrder(client **bogdanfinn.TlsClient, secret *tokens.Secret, translatedRequest chatgpt_types.ChatGPTRequest, proxyUrl string, stream bool, state *chatgpt.ChatClientState) (*http.Response, *websocket.Conn, *chatgpt.TurnStile, int, error) {
+func conversationClientOrder(client **bogdanfinn.TlsClient, account *accounts.Account, translatedRequest chatgpt_types.ChatGPTRequest, proxyUrl string, stream bool, state *chatgpt.ChatClientState) (*http.Response, *websocket.Conn, *chatgpt.TurnStile, int, error) {
 	if state != nil {
 		state.ApplyToRequest(&translatedRequest)
 	}
 	turnTraceID := uuid.NewString()
 
-	turnStile, status, err := chatgpt.InitSentinelWithState(*client, secret, proxyUrl, 0, state)
+	turnStile, status, err := chatgpt.InitSentinelWithState(*client, account, proxyUrl, 0, state)
 	if err != nil {
 		return nil, nil, nil, status, err
 	}
 
-	chatgpt.POSTConversationInit(*client, secret, state)
+	chatgpt.POSTConversationInit(*client, account, state)
 
 	var wsConn *websocket.Conn
-	if stream && !secret.IsFree {
-		wsConn, err = chatgpt.DialChatWebsocketWithStateAndProxy(*client, secret, state, proxyUrl)
+	if stream && account.Type == accounts.TypePUID {
+		wsConn, err = chatgpt.DialChatWebsocketWithStateAndProxy(*client, account, state, proxyUrl)
 		if err != nil {
 			return nil, nil, nil, http.StatusInternalServerError, err
 		}
 	}
 
-	conduitToken, err := chatgpt.PrepareConversationConduitFullWithSentinel(*client, translatedRequest, secret, proxyUrl, turnTraceID, state, turnStile)
+	conduitToken, err := chatgpt.PrepareConversationConduitFullWithSentinel(*client, translatedRequest, account, proxyUrl, turnTraceID, state, turnStile)
 	if err != nil {
 		if wsConn != nil {
 			wsConn.Close()
@@ -146,7 +144,7 @@ func conversationClientOrder(client **bogdanfinn.TlsClient, secret *tokens.Secre
 		return nil, nil, nil, http.StatusInternalServerError, err
 	}
 
-	response, err := chatgpt.POSTconversationPreparedWithState(*client, translatedRequest, secret, turnStile, proxyUrl, conduitToken, turnTraceID, state)
+	response, err := chatgpt.POSTconversationPreparedWithState(*client, translatedRequest, account, turnStile, proxyUrl, conduitToken, turnTraceID, state)
 	if err != nil {
 		if wsConn != nil {
 			wsConn.Close()
@@ -154,16 +152,6 @@ func conversationClientOrder(client **bogdanfinn.TlsClient, secret *tokens.Secre
 		return nil, nil, nil, http.StatusInternalServerError, err
 	}
 	return response, wsConn, turnStile, http.StatusOK, nil
-}
-
-// createTempSecret 从 account 创建临时 tokens.Secret（桥接用）
-func createTempSecret(account *accounts.Account) *tokens.Secret {
-	return &tokens.Secret{
-		Token:      account.Token,
-		IsFree:     account.Type != accounts.TypePUID,
-		PUID:       account.PUID,
-		TeamUserID: account.TeamUserID,
-	}
 }
 
 // setupClientWithProxy 创建带代理的 std client

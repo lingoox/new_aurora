@@ -6,7 +6,7 @@ import (
 	"aurora/internal/fingerprint"
 	"aurora/internal/prooftoken"
 	"aurora/internal/so"
-	"aurora/internal/tokens"
+	"aurora/internal/accounts"
 	"aurora/internal/turnstile"
 	"bytes"
 	"encoding/json"
@@ -21,15 +21,15 @@ import (
 	"github.com/google/uuid"
 )
 
-func InitTurnStileWithState(client httpclient.AuroraHttpClient, secret *tokens.Secret, proxy string, state *ChatClientState) (*TurnStile, int, error) {
-	return InitSentinelWithState(client, secret, proxy, 0, state)
+func InitTurnStileWithState(client httpclient.AuroraHttpClient, account *accounts.Account, proxy string, state *ChatClientState) (*TurnStile, int, error) {
+	return InitSentinelWithState(client, account, proxy, 0, state)
 }
 
-func InitSentinel(client httpclient.AuroraHttpClient, secret *tokens.Secret, proxy string, retry int) (*TurnStile, int, error) {
-	return InitSentinelWithState(client, secret, proxy, retry, nil)
+func InitSentinel(client httpclient.AuroraHttpClient, account *accounts.Account, proxy string, retry int) (*TurnStile, int, error) {
+	return InitSentinelWithState(client, account, proxy, retry, nil)
 }
 
-func InitSentinelWithState(client httpclient.AuroraHttpClient, secret *tokens.Secret, proxy string, retry int, state *ChatClientState) (*TurnStile, int, error) {
+func InitSentinelWithState(client httpclient.AuroraHttpClient, account *accounts.Account, proxy string, retry int, state *ChatClientState) (*TurnStile, int, error) {
 	if proxy != "" {
 		client.SetProxy(proxy)
 	}
@@ -39,25 +39,25 @@ func InitSentinelWithState(client httpclient.AuroraHttpClient, secret *tokens.Se
 	}
 	requirementsToken := prooftoken.NewConfig(ua).RequirementsToken()
 
-	prepare, status, err := POSTSentinelPrepareWithState(client, secret, requirementsToken, state)
+	prepare, status, err := POSTSentinelPrepareWithState(client, account, requirementsToken, state)
 	if err != nil {
-		if secret.IsFree && status == http.StatusUnauthorized && retry < 2 {
+		if account.Type != accounts.TypePUID && status == http.StatusUnauthorized && retry < 2 {
 			time.Sleep(time.Second * 2)
-			secret.Token = uuid.NewString()
-			return InitSentinelWithState(client, secret, proxy, retry+1, state)
+			account.Token = uuid.NewString()
+			return InitSentinelWithState(client, account, proxy, retry+1, state)
 		}
 		return nil, status, err
 	}
 	if prepare.ForceLogin {
-		if !secret.IsFree {
+		if account.Type == accounts.TypePUID {
 			return nil, http.StatusUnauthorized, fmt.Errorf("force login required: ChatGPT access token is expired or not accepted")
 		}
 		if retry > 1 {
 			return nil, http.StatusForbidden, fmt.Errorf("force login required")
 		}
 		time.Sleep(time.Second)
-		secret.Token = uuid.NewString()
-		return InitSentinelWithState(client, secret, proxy, retry+1, state)
+		account.Token = uuid.NewString()
+		return InitSentinelWithState(client, account, proxy, retry+1, state)
 	}
 	if prepare.PrepareToken == "" {
 		return nil, status, fmt.Errorf("sentinel prepare token is missing")
@@ -94,12 +94,12 @@ func InitSentinelWithState(client httpclient.AuroraHttpClient, secret *tokens.Se
 		ts.soSession.Start()
 	}
 
-	finalize, status, err := POSTSentinelFinalizeWithState(client, secret, prepare.PrepareToken, proofToken, turnstileToken, state)
+	finalize, status, err := POSTSentinelFinalizeWithState(client, account, prepare.PrepareToken, proofToken, turnstileToken, state)
 	if err != nil {
-		if secret.IsFree && status == http.StatusUnauthorized && retry < 2 {
+		if account.Type != accounts.TypePUID && status == http.StatusUnauthorized && retry < 2 {
 			time.Sleep(time.Second * 2)
-			secret.Token = uuid.NewString()
-			return InitSentinelWithState(client, secret, proxy, retry+1, state)
+			account.Token = uuid.NewString()
+			return InitSentinelWithState(client, account, proxy, retry+1, state)
 		}
 		return nil, status, err
 	}
@@ -114,7 +114,7 @@ func InitSentinelWithState(client httpclient.AuroraHttpClient, secret *tokens.Se
 }
 
 // stateFlow 推导 so token 里的 flow 字段(对齐 deob_js/out.js:924 ce() 行为)。
-// 优先用 secret.Token 当作 flow 标识;若 secret 不可用则用 ua 简写。
+// 优先用 account.Token 当作 flow 标识;若 account 不可用则用 ua 简写。
 func stateFlow(state *ChatClientState, ua string) string {
 	if state != nil && state.DeviceID != "" {
 		return state.DeviceID
@@ -127,10 +127,10 @@ func stateFlow(state *ChatClientState, ua string) string {
 
 // soDeviceIDFor 给出 openai-sentinel-so-token 的 deviceID 参数。对齐 out.js
 // sessionObserverToken() 流程,deviceID 是 ne.get() 的 key,也是 ce({...}, t) 里的
-// id;实际取值对应 qn.getCookies()["oai-did"](out.js:735),即 secret.Token。
-func soDeviceIDFor(secret *tokens.Secret) string {
-	if secret != nil && secret.Token != "" {
-		return secret.Token
+// id;实际取值对应 qn.getCookies()["oai-did"](out.js:735),即 account.Token。
+func soDeviceIDFor(account *accounts.Account) string {
+	if account != nil && account.Token != "" {
+		return account.Token
 	}
 	return ""
 }
@@ -138,7 +138,7 @@ func soDeviceIDFor(secret *tokens.Secret) string {
 // ensureSOToken 懒求值 openai-sentinel-so-token header 值:第一次调用时跑
 // snapshot_dx(复用 collector 留下的 VM 寄存器),后续直接返回缓存结果。
 // 对齐 out.js sessionObserverToken():取 snapshot 后用 ce({so,c}, id, flow) 编码。
-// deviceID 是这次请求使用的实际 deviceID(通常来自 secret.Token 或 cookie)。
+// deviceID 是这次请求使用的实际 deviceID(通常来自 account.Token 或 cookie)。
 func (ts *TurnStile) ensureSOToken(deviceID string) string {
 	if ts == nil || ts.soSession == nil {
 		return ts.SOToken
@@ -165,17 +165,17 @@ func (ts *TurnStile) ensureSOToken(deviceID string) string {
 	return ts.SOToken
 }
 
-func POSTSentinelPrepare(client httpclient.AuroraHttpClient, secret *tokens.Secret, requirementsToken string) (*ChatRequire, int, error) {
-	return POSTSentinelPrepareWithState(client, secret, requirementsToken, nil)
+func POSTSentinelPrepare(client httpclient.AuroraHttpClient, account *accounts.Account, requirementsToken string) (*ChatRequire, int, error) {
+	return POSTSentinelPrepareWithState(client, account, requirementsToken, nil)
 }
 
-func POSTSentinelPrepareWithState(client httpclient.AuroraHttpClient, secret *tokens.Secret, requirementsToken string, state *ChatClientState) (*ChatRequire, int, error) {
-	apiUrl, targetPath := sentinelURL(secret, "/sentinel/chat-requirements/prepare")
+func POSTSentinelPrepareWithState(client httpclient.AuroraHttpClient, account *accounts.Account, requirementsToken string, state *ChatClientState) (*ChatRequire, int, error) {
+	apiUrl, targetPath := sentinelURL(account, "/sentinel/chat-requirements/prepare")
 	bodyJSON, err := json.Marshal(map[string]string{"p": requirementsToken})
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
-	header := sentinelHeaderWithState(secret, targetPath, state)
+	header := sentinelHeaderWithState(account, targetPath, state)
 	response, err := client.Request(http.MethodPost, apiUrl, header, nil, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -191,12 +191,12 @@ func POSTSentinelPrepareWithState(client httpclient.AuroraHttpClient, secret *to
 	return &result, response.StatusCode, nil
 }
 
-func POSTSentinelFinalize(client httpclient.AuroraHttpClient, secret *tokens.Secret, prepareToken, proofToken, turnstileToken string) (*sentinelFinalizeResponse, int, error) {
-	return POSTSentinelFinalizeWithState(client, secret, prepareToken, proofToken, turnstileToken, nil)
+func POSTSentinelFinalize(client httpclient.AuroraHttpClient, account *accounts.Account, prepareToken, proofToken, turnstileToken string) (*sentinelFinalizeResponse, int, error) {
+	return POSTSentinelFinalizeWithState(client, account, prepareToken, proofToken, turnstileToken, nil)
 }
 
-func POSTSentinelFinalizeWithState(client httpclient.AuroraHttpClient, secret *tokens.Secret, prepareToken, proofToken, turnstileToken string, state *ChatClientState) (*sentinelFinalizeResponse, int, error) {
-	apiUrl, targetPath := sentinelURL(secret, "/sentinel/chat-requirements/finalize")
+func POSTSentinelFinalizeWithState(client httpclient.AuroraHttpClient, account *accounts.Account, prepareToken, proofToken, turnstileToken string, state *ChatClientState) (*sentinelFinalizeResponse, int, error) {
+	apiUrl, targetPath := sentinelURL(account, "/sentinel/chat-requirements/finalize")
 	payload := map[string]string{"prepare_token": prepareToken}
 	if proofToken != "" {
 		payload["proofofwork"] = proofToken
@@ -208,7 +208,7 @@ func POSTSentinelFinalizeWithState(client httpclient.AuroraHttpClient, secret *t
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
-	header := sentinelHeaderWithState(secret, targetPath, state)
+	header := sentinelHeaderWithState(account, targetPath, state)
 	response, err := client.Request(http.MethodPost, apiUrl, header, nil, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -236,10 +236,10 @@ type conversationInitResponse struct {
 // POSTConversationInit 调用 /conversation/init 端点 — 对齐浏览器行为:
 // 在 sentinel 流程完成后调用,获取对话元数据(default_model_slug, limits 等)。
 // 浏览器在页面加载时调用此 API 以建立会话上下文。
-func POSTConversationInit(client httpclient.AuroraHttpClient, secret *tokens.Secret, state *ChatClientState) (*conversationInitResponse, error) {
+func POSTConversationInit(client httpclient.AuroraHttpClient, account *accounts.Account, state *ChatClientState) (*conversationInitResponse, error) {
 	// free 用户走 backend-anon,paid 走 backend-api
 	var apiUrl string
-	if secret != nil && secret.IsFree {
+	if account != nil && account.Type != accounts.TypePUID {
 		apiUrl = strings.Replace(BaseURL, "backend-api", "backend-anon", 1) + "/conversation/init"
 	} else {
 		apiUrl = BaseURL + "/conversation/init"
@@ -250,13 +250,13 @@ func POSTConversationInit(client httpclient.AuroraHttpClient, secret *tokens.Sec
 	header.Set("Content-Type", "application/json")
 	header.Set("X-Openai-Target-Path", targetPath)
 	header.Set("X-Openai-Target-Route", targetPath)
-	if secret != nil && secret.IsFree && secret.Token != "" {
-		header.Set("Oai-Device-Id", secret.Token)
+	if account != nil && account.Type != accounts.TypePUID && account.Token != "" {
+		header.Set("Oai-Device-Id", account.Token)
 	}
-	if secret != nil && !secret.IsFree && secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account != nil && account.Type == accounts.TypePUID && account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	payload := map[string]any{
 		"requested_default_model": nil,
 		"conversation_id":         nil,
@@ -353,13 +353,13 @@ func randomWindowKey() string {
 //
 // /sentinel/req 使用与 /chat-requirements/prepare **相同** 的 25 元素指纹格式,
 // 仅 [3] nonce 不同 (prepare=1, req=2)。
-func POSTSentinelReq(client httpclient.AuroraHttpClient, secret *tokens.Secret, requirementsToken, deviceID, flow string, state *ChatClientState) (*sentinelReqResponse, int, error) {
+func POSTSentinelReq(client httpclient.AuroraHttpClient, account *accounts.Account, requirementsToken, deviceID, flow string, state *ChatClientState) (*sentinelReqResponse, int, error) {
 	if flow == "" {
 		flow = "conversation"
 	}
 	// 使用与 prepare 相同的指纹格式,但 nonce=2
 	reqToken := buildSentinelReqToken(state)
-	apiUrl, targetPath := sentinelURL(secret, "/sentinel/req")
+	apiUrl, targetPath := sentinelURL(account, "/sentinel/req")
 	bodyJSON, err := json.Marshal(map[string]string{
 		"p":    reqToken,
 		"id":   deviceID,
@@ -378,13 +378,13 @@ func POSTSentinelReq(client httpclient.AuroraHttpClient, secret *tokens.Secret, 
 	if state == nil || state.ConversationID == "" {
 		header.Set("Referer", "https://chatgpt.com/backend-api/sentinel/frame.html?sv=20260423af3c")
 	}
-	if secret != nil && secret.IsFree && secret.Token != "" {
-		header.Set("Oai-Device-Id", secret.Token)
+	if account != nil && account.Type != accounts.TypePUID && account.Token != "" {
+		header.Set("Oai-Device-Id", account.Token)
 	}
-	if secret != nil && !secret.IsFree && secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account != nil && account.Type == accounts.TypePUID && account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	response, err := client.Request(http.MethodPost, apiUrl, header, nil, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return nil, http.StatusInternalServerError, err

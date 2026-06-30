@@ -5,7 +5,7 @@ import (
 	"aurora/internal/browserfp"
 	"aurora/internal/prooftoken"
 	"aurora/internal/so"
-	"aurora/internal/tokens"
+	"aurora/internal/accounts"
 	"aurora/util"
 	"encoding/base64"
 	"encoding/json"
@@ -255,23 +255,15 @@ type pingSentinelResponse struct {
 	Status string `json:"status"`
 }
 
-// POSTSentinelPing 调用 /sentinel/ping 端点 — 对齐浏览器端在对话进行中
-// 发送的风控汇报请求。携带所有已计算的 sentinel token + Extra-Data。
-//
-// 对齐 2026-06-24 抓包: ping 在对话上下文中发送,携带 conversation_id 与 last_message_id。
-// 两种 ping_source:
-//   - "session_observer_background_submit" (seq 0): 后台 SO token 提交
-//   - "conversation_heartbeat" (seq 1): 对话心跳
-//
-// conversationID 不带 "WEB:" 前缀 (函数内补)。
-func POSTSentinelPing(client httpclient.AuroraHttpClient, secret *tokens.Secret, ts *TurnStile, conversationID, lastMessageID string, state *ChatClientState) error {
-	return POSTSentinelPingWithSource(client, secret, ts, conversationID, lastMessageID, state, "session_observer_background_submit", 0)
+// POSTSentinelPing 调用 /sentinel/ping 端点。
+func POSTSentinelPing(client httpclient.AuroraHttpClient, account *accounts.Account, ts *TurnStile, conversationID, lastMessageID string, state *ChatClientState) error {
+	return POSTSentinelPingWithSource(client, account, ts, conversationID, lastMessageID, state, "session_observer_background_submit", 0)
 }
 
 // POSTSentinelPingWithSource 支持 ping_source 和 sequence_number 自定义。
-func POSTSentinelPingWithSource(client httpclient.AuroraHttpClient, secret *tokens.Secret, ts *TurnStile, conversationID, lastMessageID string, state *ChatClientState, pingSource string, sequenceNumber int) error {
-	apiUrl, targetPath := sentinelURL(secret, "/sentinel/ping")
-	header := sentinelHeaderWithState(secret, targetPath, state)
+func POSTSentinelPingWithSource(client httpclient.AuroraHttpClient, account *accounts.Account, ts *TurnStile, conversationID, lastMessageID string, state *ChatClientState, pingSource string, sequenceNumber int) error {
+	apiUrl, targetPath := sentinelURL(account, "/sentinel/ping")
+	header := sentinelHeaderWithState(account, targetPath, state)
 	// 注入所有 sentinel token header
 	if ts != nil {
 		if ts.ChatRequirementsPrepareToken != "" {
@@ -288,7 +280,7 @@ func POSTSentinelPingWithSource(client httpclient.AuroraHttpClient, secret *toke
 		if ts.ProofOfWorkToken != "" {
 			header.Set("Openai-Sentinel-Proof-Token", ts.ProofOfWorkToken)
 		}
-		if soToken := ts.ensureSOToken(soDeviceIDFor(secret)); soToken != "" {
+		if soToken := ts.ensureSOToken(soDeviceIDFor(account)); soToken != "" {
 			header.Set("Openai-Sentinel-So-Token", soToken)
 		}
 		extraData := buildSentinelExtraData(
@@ -296,7 +288,7 @@ func POSTSentinelPingWithSource(client httpclient.AuroraHttpClient, secret *toke
 			lastMessageID,
 			ts.ChatRequirementsPrepareToken,
 			ts.ChatRequirementsToken,
-			ts.ensureSOToken(soDeviceIDFor(secret)) != "",
+			ts.ensureSOToken(soDeviceIDFor(account)) != "",
 			ts.TurnstileToken != "",
 			ts.ProofOfWorkToken != "",
 			pingSource,
@@ -315,51 +307,51 @@ func POSTSentinelPingWithSource(client httpclient.AuroraHttpClient, secret *toke
 	return nil
 }
 
-func sentinelURL(secret *tokens.Secret, path string) (string, string) {
-	if secret != nil && secret.IsFree {
+func sentinelURL(account *accounts.Account, path string) (string, string) {
+	if account != nil && account.Type != accounts.TypePUID {
 		return strings.Replace(BaseURL, "backend-api", "backend-anon", 1) + path, "/backend-anon" + path
 	}
 	return BaseURL + path, "/backend-api" + path
 }
 
-func sentinelHeader(secret *tokens.Secret, targetPath string) httpclient.AuroraHeaders {
-	return sentinelHeaderWithState(secret, targetPath, nil)
+func sentinelHeader(account *accounts.Account, targetPath string) httpclient.AuroraHeaders {
+	return sentinelHeaderWithState(account, targetPath, nil)
 }
 
-func sentinelHeaderWithState(secret *tokens.Secret, targetPath string, state *ChatClientState) httpclient.AuroraHeaders {
+func sentinelHeaderWithState(account *accounts.Account, targetPath string, state *ChatClientState) httpclient.AuroraHeaders {
 	header := createBaseHeaderForState(state)
 	header.Set("Accept", "*/*")
 	header.Set("Content-Type", "application/json")
 	header.Set("X-Openai-Target-Path", targetPath)
 	header.Set("X-Openai-Target-Route", targetPath)
-	if secret != nil && secret.IsFree && secret.Token != "" {
-		header.Set("Oai-Device-Id", secret.Token)
+	if account != nil && account.Type != accounts.TypePUID && account.Token != "" {
+		header.Set("Oai-Device-Id", account.Token)
 	}
-	if secret != nil && !secret.IsFree && secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account != nil && account.Type == accounts.TypePUID && account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	return header
 }
 
-func setTeamAccountHeader(header httpclient.AuroraHeaders, secret *tokens.Secret) {
-	if secret != nil && strings.TrimSpace(secret.TeamUserID) != "" {
-		header.Set("Chatgpt-Account-Id", strings.TrimSpace(secret.TeamUserID))
+func setTeamAccountHeader(header httpclient.AuroraHeaders, account *accounts.Account) {
+	if account != nil && strings.TrimSpace(account.TeamUserID) != "" {
+		header.Set("Chatgpt-Account-Id", strings.TrimSpace(account.TeamUserID))
 	}
 }
 
-func conversationURL(secret *tokens.Secret, path string) (string, string) {
-	if secret != nil && secret.IsFree {
+func conversationURL(account *accounts.Account, path string) (string, string) {
+	if account != nil && account.Type != accounts.TypePUID {
 		return strings.Replace(BaseURL, "backend-api", "backend-anon", 1) + path, "/backend-anon" + path
 	}
 	return BaseURL + path, "/backend-api" + path
 }
 
-func conversationHeaders(secret *tokens.Secret, chatToken *TurnStile, accept, targetPath, conduitToken, turnTraceID string) httpclient.AuroraHeaders {
-	return conversationHeadersWithState(secret, chatToken, accept, targetPath, conduitToken, turnTraceID, nil)
+func conversationHeaders(account *accounts.Account, chatToken *TurnStile, accept, targetPath, conduitToken, turnTraceID string) httpclient.AuroraHeaders {
+	return conversationHeadersWithState(account, chatToken, accept, targetPath, conduitToken, turnTraceID, nil)
 }
 
-func conversationHeadersWithState(secret *tokens.Secret, chatToken *TurnStile, accept, targetPath, conduitToken, turnTraceID string, state *ChatClientState) httpclient.AuroraHeaders {
+func conversationHeadersWithState(account *accounts.Account, chatToken *TurnStile, accept, targetPath, conduitToken, turnTraceID string, state *ChatClientState) httpclient.AuroraHeaders {
 	header := createBaseHeaderForState(state)
 	header.Set("Accept", accept)
 	header.Set("Content-Type", "application/json")
@@ -388,32 +380,28 @@ func conversationHeadersWithState(secret *tokens.Secret, chatToken *TurnStile, a
 		if chatToken.TurnstileToken != "" {
 			header.Set("Openai-Sentinel-Turnstile-Token", chatToken.TurnstileToken)
 		}
-		// openai-sentinel-so-token:对齐 out.js sessionObserverToken() 行为,需要在
-		// 首次发请求前触发 snapshot(fire-and-forget collector 必须已经起好)。
-		// deviceID 沿用 secret.Token(对应 out.js qn.getCookies()["oai-did"])。
-		if soToken := chatToken.ensureSOToken(soDeviceIDFor(secret)); soToken != "" {
+		if soToken := chatToken.ensureSOToken(soDeviceIDFor(account)); soToken != "" {
 			header.Set("Openai-Sentinel-So-Token", soToken)
 		}
 	}
 	cookieStr := ""
-	if secret != nil && secret.PUID != "" {
-		cookieStr = "_puid=" + secret.PUID
+	if account != nil && account.PUID != "" {
+		cookieStr = "_puid=" + account.PUID
 	}
-	if secret != nil && secret.IsFree && secret.Token != "" {
-		header.Set("Oai-Device-Id", secret.Token)
-		// free 用户的 oai-did 也塞进 cookie
+	if account != nil && account.Type != accounts.TypePUID && account.Token != "" {
+		header.Set("Oai-Device-Id", account.Token)
 		if cookieStr != "" {
 			cookieStr += "; "
 		}
-		cookieStr += "oai-did=" + secret.Token
+		cookieStr += "oai-did=" + account.Token
 	}
 	if cookieStr != "" {
 		header["Cookie"] = cookieStr
 	}
-	if secret != nil && !secret.IsFree && secret.Token != "" {
-		header.Set("Authorization", "Bearer "+secret.Token)
+	if account != nil && account.Type == accounts.TypePUID && account.Token != "" {
+		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	setTeamAccountHeader(header, secret)
+	setTeamAccountHeader(header, account)
 	return header
 }
 

@@ -93,7 +93,6 @@ func (h *AudioHandler) TTS(c *gin.Context) {
 	}
 
 	proxyUrl := account.Proxy
-	secret := createTempSecret(account)
 	client := setupClientWithProxy(proxyUrl)
 
 	// Convert the chat request to a ChatGPT request
@@ -102,7 +101,7 @@ func (h *AudioHandler) TTS(c *gin.Context) {
 	clientState.ConversationID = translated_request.ConversationID
 	clientState.ParentMessageID = translated_request.ParentMessageID
 
-	response, wsConn, _, status, err := conversationClientOrder(&client, secret, translated_request, proxyUrl, false, clientState)
+	response, wsConn, _, status, err := conversationClientOrder(&client, account, translated_request, proxyUrl, false, clientState)
 	if err != nil {
 		c.JSON(status, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -125,7 +124,7 @@ func (h *AudioHandler) TTS(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "failed to get TTS message id"})
 		return
 	}
-	defer chatgpt.RemoveConversation(client, secret, convId, proxyUrl)
+	defer chatgpt.RemoveConversation(client, account, convId, proxyUrl)
 
 	format := ttsFmtMap[original_request.Format]
 	if format == "" {
@@ -135,7 +134,7 @@ func (h *AudioHandler) TTS(c *gin.Context) {
 	if voice == "" {
 		voice = "cove"
 	}
-	data, status, err := chatgpt.GetTTS(client, secret, msgId, convId, voice, format, proxyUrl)
+	data, status, err := chatgpt.GetTTS(client, account, msgId, convId, voice, format, proxyUrl)
 	if err != nil {
 		c.JSON(status, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -276,14 +275,13 @@ func (h *AudioHandler) handleTranscription(c *gin.Context, isTranslation bool) {
 		mimeType = "audio/mpeg"
 	}
 
-	secret := createTempSecret(account)
 	client := bogdanfinn.NewStdClient()
 	client.SetCookies("https://chatgpt.com", chatgpt.BasicCookies)
 	if proxyUrl != "" {
 		client.SetProxy(proxyUrl)
 	}
 
-	text, status, err := chatgpt.TranscribeAudio(client, secret, proxyUrl, audioData, fileHeader.Filename, mimeType, language)
+	text, status, err := chatgpt.TranscribeAudio(client, account, proxyUrl, audioData, fileHeader.Filename, mimeType, language)
 	if err != nil {
 		c.JSON(status, gin.H{"error": gin.H{
 			"message": err.Error(),

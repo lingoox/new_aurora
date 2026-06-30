@@ -10,7 +10,6 @@ import (
 	"aurora/httpclient/bogdanfinn"
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
-	"aurora/internal/tokens"
 	"aurora/internal/toolcall"
 	chatgpt_types "aurora/internal/types/chatgpt"
 	officialtypes "aurora/internal/types/official"
@@ -75,7 +74,6 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 	input_tokens := countMessagesTokens(original_request.Messages)
 
 	uid := uuid.NewString()
-	secret := createTempSecret(account)
 	client := setupClientWithProxy(proxyUrl)
 
 	// 工具调用模式判定
@@ -85,7 +83,7 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 	}
 
 	// Convert the chat request to a ChatGPT request
-	translated_request := chatgptrequestconverter.ConvertAPIRequest(original_request, secret, proxyUrl, client)
+	translated_request := chatgptrequestconverter.ConvertAPIRequest(original_request, account, proxyUrl, client)
 
 	// 按 conversationID 复用 ChatClientState
 	var clientState *chatgpt.ChatClientState
@@ -105,11 +103,11 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 
 	// 工具调用提前分支
 	if toolsEnabled {
-		h.handleToolCalling(c, &original_request, &client, &secret, &clientState, &reqModel, &uid, &proxyUrl, &input_tokens)
+		h.handleToolCalling(c, &original_request, &client, account, &clientState, &reqModel, &uid, &proxyUrl, &input_tokens)
 		return
 	}
 
-	response, wsConn, turnStile, status, err := conversationClientOrder(&client, secret, translated_request, proxyUrl, original_request.Stream, clientState)
+	response, wsConn, turnStile, status, err := conversationClientOrder(&client, account, translated_request, proxyUrl, original_request.Stream, clientState)
 	if err != nil {
 		c.JSON(status, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -145,7 +143,7 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 	}
 	for i := maxContinueCount(); i > 0; i-- {
 		var continue_info *chatgpt.ContinueInfo
-		result := chatgpt.HandlerDetailedWithOptions(c, response, client, secret, uid, translated_request, original_request.Stream, reqModel, chatgpt.HandlerDetailedOptions{
+		result := chatgpt.HandlerDetailedWithOptions(c, response, client, account, uid, translated_request, original_request.Stream, reqModel, chatgpt.HandlerDetailedOptions{
 			Websocket:        wsConn,
 			ClientState:      clientState,
 			ArtifactDelivery: original_request.ArtifactDelivery,
@@ -162,10 +160,10 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 				pingSent = true
 				lastMsgID := result.ParentMessageID
 				pingClient := client
-				pingSecret := secret
+				pingAccount := account
 				pingTurnStile := turnStile
 				go func() {
-					perr := chatgpt.POSTSentinelPing(pingClient, pingSecret, pingTurnStile, conversationID, lastMsgID, clientState)
+					perr := chatgpt.POSTSentinelPing(pingClient, pingAccount, pingTurnStile, conversationID, lastMsgID, clientState)
 					if os.Getenv("DEBUG_SENTINEL") != "" {
 						fmt.Printf("[sentinel-ping] conv=%s lastMsg=%s err=%v\n", conversationID, lastMsgID, perr)
 					}
@@ -189,7 +187,7 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 		translated_request.ConversationID = continue_info.ConversationID
 		translated_request.ParentMessageID = continue_info.ParentID
 
-		response, wsConn, _, status, err = conversationClientOrder(&client, secret, translated_request, proxyUrl, original_request.Stream, clientState)
+		response, wsConn, _, status, err = conversationClientOrder(&client, account, translated_request, proxyUrl, original_request.Stream, clientState)
 		if err != nil {
 			c.JSON(status, gin.H{"error": gin.H{
 				"message": err.Error(),
@@ -283,10 +281,9 @@ func (h *ChatHandler) Responses(c *gin.Context) {
 	}
 
 	uid := uuid.NewString()
-	secret := createTempSecret(account)
 	client := setupClientWithProxy(proxyUrl)
 
-	translated_request := chatgptrequestconverter.ConvertAPIRequest(original_request, secret, proxyUrl, client)
+	translated_request := chatgptrequestconverter.ConvertAPIRequest(original_request, account, proxyUrl, client)
 
 	// 按 conversationID 复用 ChatClientState，保持 DeviceID/SessionID 一致
 	var clientState *chatgpt.ChatClientState
@@ -303,7 +300,7 @@ func (h *ChatHandler) Responses(c *gin.Context) {
 		reqModel = "auto"
 	}
 
-	response, wsConn, _, status, err := conversationClientOrder(&client, secret, translated_request, proxyUrl, false, clientState)
+	response, wsConn, _, status, err := conversationClientOrder(&client, account, translated_request, proxyUrl, false, clientState)
 	if err != nil {
 		c.JSON(status, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -326,7 +323,7 @@ func (h *ChatHandler) Responses(c *gin.Context) {
 	for i := maxContinueCount(); i > 0; i-- {
 		var continue_info *chatgpt.ContinueInfo
 		var response_part string
-		result := chatgpt.HandlerDetailedWithOptions(c, response, client, secret, uid, translated_request, false, reqModel, chatgpt.HandlerDetailedOptions{
+		result := chatgpt.HandlerDetailedWithOptions(c, response, client, account, uid, translated_request, false, reqModel, chatgpt.HandlerDetailedOptions{
 			Websocket:   wsConn,
 			ClientState: clientState,
 		})
@@ -349,7 +346,7 @@ func (h *ChatHandler) Responses(c *gin.Context) {
 		translated_request.ConversationID = continue_info.ConversationID
 		translated_request.ParentMessageID = continue_info.ParentID
 
-		response, wsConn, _, status, err = conversationClientOrder(&client, secret, translated_request, proxyUrl, false, clientState)
+		response, wsConn, _, status, err = conversationClientOrder(&client, account, translated_request, proxyUrl, false, clientState)
 		if err != nil {
 			c.JSON(status, gin.H{"error": gin.H{
 				"message": err.Error(),
@@ -440,15 +437,7 @@ func (h *ChatHandler) Files(c *gin.Context) {
 	client := bogdanfinn.NewStdClient()
 	client.SetCookies("https://chatgpt.com", chatgpt.BasicCookies)
 
-	// 临时桥接：chatgpt 函数仍使用 tokens.Secret
-	secret := &tokens.Secret{
-		Token:      account.Token,
-		IsFree:     account.Type != accounts.TypePUID,
-		PUID:       account.PUID,
-		TeamUserID: account.TeamUserID,
-	}
-
-	uploaded, status, err := chatgpt.UploadFile(client, secret, account.Proxy, formFile.Filename, contentType, data)
+	uploaded, status, err := chatgpt.UploadFile(client, account, account.Proxy, formFile.Filename, contentType, data)
 	if err != nil {
 		c.JSON(status, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -464,7 +453,7 @@ func (h *ChatHandler) Files(c *gin.Context) {
 }
 
 // handleToolCalling 工具调用模式的主流程（对齐 initialize/handlers.go:handleToolCalling）
-func (h *ChatHandler) handleToolCalling(c *gin.Context, originalRequest *officialtypes.APIRequest, client **bogdanfinn.TlsClient, secret **tokens.Secret, clientState **chatgpt.ChatClientState, reqModel *string, uid *string, proxyUrl *string, inputTokens *int) {
+func (h *ChatHandler) handleToolCalling(c *gin.Context, originalRequest *officialtypes.APIRequest, client **bogdanfinn.TlsClient, account *accounts.Account, clientState **chatgpt.ChatClientState, reqModel *string, uid *string, proxyUrl *string, inputTokens *int) {
 	tools := originalRequest.Tools
 	maxRefusalRetries := 3
 	if v := os.Getenv("REFUSAL_RETRIES"); v != "" {
@@ -473,7 +462,7 @@ func (h *ChatHandler) handleToolCalling(c *gin.Context, originalRequest *officia
 		}
 	}
 
-	baseTranslated := chatgptrequestconverter.ConvertAPIRequest(*originalRequest, *secret, *proxyUrl, *client)
+	baseTranslated := chatgptrequestconverter.ConvertAPIRequest(*originalRequest, account, *proxyUrl, *client)
 	if baseTranslated.ConversationID != "" {
 		*clientState = h.sessions.Get(baseTranslated.ConversationID)
 	}
@@ -495,7 +484,7 @@ func (h *ChatHandler) handleToolCalling(c *gin.Context, originalRequest *officia
 			translated.AddMessage("user", retrySuffix)
 		}
 
-		response, wsConn, _, status, err := conversationClientOrder(client, *secret, translated, *proxyUrl, false, *clientState)
+		response, wsConn, _, status, err := conversationClientOrder(client, account, translated, *proxyUrl, false, *clientState)
 		if err != nil {
 			c.JSON(status, gin.H{"error": gin.H{
 				"message": err.Error(),
@@ -508,7 +497,7 @@ func (h *ChatHandler) handleToolCalling(c *gin.Context, originalRequest *officia
 		_ = wsConn
 		_ = status
 
-		result := chatgpt.HandlerDetailedWithOptions(c, response, *client, *secret, *uid, translated, false, *reqModel, chatgpt.HandlerDetailedOptions{
+		result := chatgpt.HandlerDetailedWithOptions(c, response, *client, account, *uid, translated, false, *reqModel, chatgpt.HandlerDetailedOptions{
 			Websocket:        nil,
 			ClientState:      *clientState,
 			ArtifactDelivery: originalRequest.ArtifactDelivery,
@@ -594,19 +583,11 @@ func (h *ChatHandler) ChatGPTConversation(c *gin.Context) {
 		return
 	}
 
-	// 临时桥接：chatgpt 函数仍使用 tokens.Secret
-	secret := &tokens.Secret{
-		Token:      account.Token,
-		IsFree:     account.Type != accounts.TypePUID,
-		PUID:       account.PUID,
-		TeamUserID: account.TeamUserID,
-	}
-
 	client := bogdanfinn.NewStdClient()
 	if account.Proxy != "" {
 		client.SetProxy(account.Proxy)
 	}
-	turnStile, status, err := chatgpt.InitSentinel(client, secret, account.Proxy, 0)
+	turnStile, status, err := chatgpt.InitSentinel(client, account, account.Proxy, 0)
 	if err != nil {
 		c.JSON(status, gin.H{
 			"message": err.Error(),
@@ -617,7 +598,7 @@ func (h *ChatHandler) ChatGPTConversation(c *gin.Context) {
 		return
 	}
 
-	response, err := chatgpt.POSTconversation(client, original_request, secret, turnStile, account.Proxy)
+	response, err := chatgpt.POSTconversation(client, original_request, account, turnStile, account.Proxy)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "error sending request"})
 		return
