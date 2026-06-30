@@ -34,7 +34,7 @@ func respondError(c *gin.Context, status int, err error) {
 
 // resolveAccount 从请求 Authorization header 解析账号
 // 替代旧的 secretFromAuthorization + accessTokenFromRefreshToken
-func resolveAccount(c *gin.Context, pool *accounts.Pool, needsPaid bool) (*accounts.Account, error) {
+func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, needsPaid bool) (*accounts.Account, error) {
 	authHeader := c.GetHeader("Authorization")
 
 	// 提取 Bearer token
@@ -49,7 +49,7 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, needsPaid bool) (*accou
 		teamAccountID = strings.TrimSpace(parts[1])
 	}
 
-	expected := os.Getenv("Authorization")
+	expected := cfg.Authorization
 
 	// 无 token 或匹配全局密钥 → 从池里取默认账号
 	if token == "" || (expected != "" && token == expected) {

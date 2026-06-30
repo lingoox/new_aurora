@@ -8,6 +8,7 @@ import (
 	"aurora/httpclient/bogdanfinn"
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
+	"aurora/internal/config"
 	officialtypes "aurora/internal/types/official"
 	chatgptrequestconverter "aurora/conversion/requests/chatgpt"
 
@@ -16,10 +17,11 @@ import (
 
 type AudioHandler struct {
 	accountPool *accounts.Pool
+	cfg         *config.Config
 }
 
-func NewAudioHandler(pool *accounts.Pool) *AudioHandler {
-	return &AudioHandler{accountPool: pool}
+func NewAudioHandler(pool *accounts.Pool, cfg *config.Config) *AudioHandler {
+	return &AudioHandler{accountPool: pool, cfg: cfg}
 }
 
 // ── TTS ──
@@ -73,7 +75,7 @@ func (h *AudioHandler) TTS(c *gin.Context) {
 		return
 	}
 
-	account, err := resolveAccount(c, h.accountPool, true)
+	account, err := resolveAccount(c, h.accountPool, h.cfg, true)
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -245,7 +247,7 @@ func (h *AudioHandler) handleTranscription(c *gin.Context, isTranslation bool) {
 		return
 	}
 
-	account, err := resolveAccount(c, h.accountPool, true)
+	account, err := resolveAccount(c, h.accountPool, h.cfg, true)
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),

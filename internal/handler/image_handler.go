@@ -14,6 +14,7 @@ import (
 	"aurora/httpclient/bogdanfinn"
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
+	"aurora/internal/config"
 	officialtypes "aurora/internal/types/official"
 
 	"github.com/gin-gonic/gin"
@@ -21,10 +22,11 @@ import (
 
 type ImageHandler struct {
 	accountPool *accounts.Pool
+	cfg         *config.Config
 }
 
-func NewImageHandler(pool *accounts.Pool) *ImageHandler {
-	return &ImageHandler{accountPool: pool}
+func NewImageHandler(pool *accounts.Pool, cfg *config.Config) *ImageHandler {
+	return &ImageHandler{accountPool: pool, cfg: cfg}
 }
 
 // ─── Image stream types ──────────────────────────────────────────
@@ -152,7 +154,7 @@ func (h *ImageHandler) Generations(c *gin.Context) {
 		imageRequest.ResponseFormat = "b64_json"
 	}
 
-	account, err := resolveAccount(c, h.accountPool, true)
+	account, err := resolveAccount(c, h.accountPool, h.cfg, true)
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -858,7 +860,7 @@ func (h *ImageHandler) runImageEditFlow(c *gin.Context, asVariation bool) {
 	}
 	stream = requestStreamFlag(c, stream)
 
-	account, err := resolveAccount(c, h.accountPool, true)
+	account, err := resolveAccount(c, h.accountPool, h.cfg, true)
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),

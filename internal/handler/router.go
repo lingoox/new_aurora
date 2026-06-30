@@ -21,8 +21,8 @@ func optionsHandler(c *gin.Context) {
 
 func RegisterRouter(accountPool *accounts.Pool, cfg *config.Config) *gin.Engine {
 	chatHandler := NewChatHandler(accountPool, cfg)
-	imageHandler := NewImageHandler(accountPool)
-	audioHandler := NewAudioHandler(accountPool)
+	imageHandler := NewImageHandler(accountPool, cfg)
+	audioHandler := NewAudioHandler(accountPool, cfg)
 	authHandler := NewAuthHandler(accountPool)
 	modelsHandler := NewModelsHandler()
 
