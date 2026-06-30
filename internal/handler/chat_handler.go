@@ -8,6 +8,7 @@ import (
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
 	"aurora/internal/tokens"
+	chatgpt_types "aurora/internal/types/chatgpt"
 	officialtypes "aurora/internal/types/official"
 
 	"github.com/gin-gonic/gin"
@@ -115,5 +116,75 @@ func (h *ChatHandler) Files(c *gin.Context) {
 }
 
 func (h *ChatHandler) ChatGPTConversation(c *gin.Context) {
-	c.JSON(200, gin.H{"message": "not implemented"})
+	var original_request chatgpt_types.ChatGPTRequest
+	if err := c.BindJSON(&original_request); err != nil {
+		c.JSON(400, gin.H{"error": gin.H{
+			"message": "Request must be proper JSON",
+			"type":    "invalid_request_error",
+			"param":   nil,
+			"code":    err.Error(),
+		}})
+		return
+	}
+	if len(original_request.Messages) > 0 && original_request.Messages[0].Author.Role == "" {
+		original_request.Messages[0].Author.Role = "user"
+	}
+
+	account, err := resolveAccount(c, h.accountPool, false)
+	if err != nil {
+		c.JSON(400, gin.H{"error": gin.H{
+			"message": err.Error(),
+			"type":    "authorization_error",
+			"param":   "Authorization",
+			"code":    400,
+		}})
+		return
+	}
+	if account == nil || account.Token == "" {
+		c.JSON(400, gin.H{"error": "Not Account Found."})
+		return
+	}
+
+	// 临时桥接：chatgpt 函数仍使用 tokens.Secret
+	secret := &tokens.Secret{
+		Token:      account.Token,
+		IsFree:     account.Type != accounts.TypePUID,
+		PUID:       account.PUID,
+		TeamUserID: account.TeamUserID,
+	}
+
+	client := bogdanfinn.NewStdClient()
+	if account.Proxy != "" {
+		client.SetProxy(account.Proxy)
+	}
+	turnStile, status, err := chatgpt.InitSentinel(client, secret, account.Proxy, 0)
+	if err != nil {
+		c.JSON(status, gin.H{
+			"message": err.Error(),
+			"type":    "InitTurnStile_request_error",
+			"param":   err,
+			"code":    status,
+		})
+		return
+	}
+
+	response, err := chatgpt.POSTconversation(client, original_request, secret, turnStile, account.Proxy)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "error sending request"})
+		return
+	}
+	defer response.Body.Close()
+
+	if chatgpt.Handle_request_error(c, response) {
+		return
+	}
+
+	c.Header("Content-Type", response.Header.Get("Content-Type"))
+	if cacheControl := response.Header.Get("Cache-Control"); cacheControl != "" {
+		c.Header("Cache-Control", cacheControl)
+	}
+
+	if _, err := io.Copy(c.Writer, response.Body); err != nil {
+		c.JSON(500, gin.H{"error": "Error sending response"})
+	}
 }
