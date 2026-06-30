@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	officialtypes "aurora/typings/official"
+	officialtypes "aurora/internal/types/official"
 )
 
 func TestContinueCountDefault(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"aurora/typings/official"
+	"aurora/internal/types/official"
 )
 
 // BuildInstructions 生成 system prompt 块,教导模型按 <tool_call>{...}</tool_call>

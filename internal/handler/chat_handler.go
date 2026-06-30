@@ -2,7 +2,7 @@ package handler
 
 import (
 	"aurora/internal/accounts"
-	officialtypes "aurora/typings/official"
+	officialtypes "aurora/internal/types/official"
 
 	"github.com/gin-gonic/gin"
 )

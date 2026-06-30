@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"aurora/typings"
-	chatgpt_types "aurora/typings/chatgpt"
+	"aurora/internal/types"
+	chatgpt_types "aurora/internal/types/chatgpt"
 )
 
 func TestConvertToStringUsesRequestModel(t *testing.T) {

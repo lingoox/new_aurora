@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"aurora/typings/official"
+	"aurora/internal/types/official"
 )
 
 // ShellToolNames 候选 shell 工具名,按顺序匹配第一个在 tools 列表里出现的。

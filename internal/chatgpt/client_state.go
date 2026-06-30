@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	chatgpt_types "aurora/typings/chatgpt"
+	chatgpt_types "aurora/internal/types/chatgpt"
 	"aurora/util"
 )
 

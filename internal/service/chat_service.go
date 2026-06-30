@@ -7,7 +7,7 @@ import (
 
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
-	officialtypes "aurora/typings/official"
+	officialtypes "aurora/internal/types/official"
 )
 
 // ChatResult 聊天完成的结果
