@@ -1,15 +1,31 @@
 package initialize
 
 import (
+	"aurora/internal/accounts"
+	"aurora/internal/config"
 	"aurora/middlewares"
 
 	"github.com/gin-gonic/gin"
 )
 
 func RegisterRouter() *gin.Engine {
+	cfg := config.Load()
+	_ = cfg // config available for future use
+
+	accountPool := accounts.NewPool(
+		accounts.InitAccountsFromConfig(
+			"access_tokens.txt",
+			"free_tokens.txt",
+			cfg.FreeAccounts,
+			cfg.FreeAccountsNum,
+			accounts.DefaultProfiles,
+		),
+	)
+
 	handler := NewHandle(
 		checkProxy(),
 		readAccessToken(),
+		accountPool,
 	)
 
 	// 初始化基础前置参数

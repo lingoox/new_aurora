@@ -4,6 +4,7 @@ import (
 	chatgptrequestconverter "aurora/conversion/requests/chatgpt"
 	"aurora/httpclient"
 	"aurora/httpclient/bogdanfinn"
+	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
 	"aurora/internal/proxys"
 	"aurora/internal/tokens"
@@ -29,9 +30,10 @@ import (
 )
 
 type Handler struct {
-	proxy    *proxys.IProxy
-	token    *tokens.AccessToken
-	sessions *SessionManager
+	proxy       *proxys.IProxy
+	token       *tokens.AccessToken
+	accountPool *accounts.Pool
+	sessions    *SessionManager
 }
 
 func writeChatCompletionStreamDone(c *gin.Context, stopSent bool, model string, conversationID string) {
@@ -44,8 +46,8 @@ func writeChatCompletionStreamDone(c *gin.Context, stopSent bool, model string, 
 	c.Writer.Flush()
 }
 
-func NewHandle(proxy *proxys.IProxy, token *tokens.AccessToken) *Handler {
-	return &Handler{proxy: proxy, token: token, sessions: NewSessionManager()}
+func NewHandle(proxy *proxys.IProxy, token *tokens.AccessToken, accountPool *accounts.Pool) *Handler {
+	return &Handler{proxy: proxy, token: token, accountPool: accountPool, sessions: NewSessionManager()}
 }
 
 // maxContinueCount 返回 max_tokens 触发时自动 continue 的最大轮数。
