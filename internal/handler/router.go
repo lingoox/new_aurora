@@ -1,0 +1,40 @@
+package handler
+
+import (
+	"aurora/internal/accounts"
+	"aurora/middlewares"
+
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterRouter(accountPool *accounts.Pool) *gin.Engine {
+	chatHandler := NewChatHandler(accountPool)
+	imageHandler := NewImageHandler(accountPool)
+	audioHandler := NewAudioHandler(accountPool)
+	authHandler := NewAuthHandler(accountPool)
+	modelsHandler := NewModelsHandler()
+
+	router := gin.Default()
+	router.Use(middlewares.Cors)
+
+	router.GET("/", func(c *gin.Context) { c.JSON(200, gin.H{"message": "Hello, world!"}) })
+	router.GET("/ping", func(c *gin.Context) { c.JSON(200, gin.H{"message": "pong"}) })
+
+	router.POST("/auth/session", authHandler.Session)
+	router.POST("/auth/refresh", authHandler.Refresh)
+
+	authGroup := router.Group("").Use(middlewares.Authorization)
+	authGroup.POST("/v1/chat/completions", chatHandler.Nightmare)
+	authGroup.POST("/v1/responses", chatHandler.Responses)
+	authGroup.POST("/v1/files", chatHandler.Files)
+	authGroup.GET("/v1/models", modelsHandler.ListModels)
+	authGroup.POST("/backend-api/conversation", chatHandler.ChatGPTConversation)
+	authGroup.POST("/v1/images/generations", imageHandler.Generations)
+	authGroup.POST("/v1/images/edits", imageHandler.Edits)
+	authGroup.POST("/v1/images/variations", imageHandler.Variations)
+	authGroup.POST("/v1/audio/speech", audioHandler.TTS)
+	authGroup.POST("/v1/audio/transcriptions", audioHandler.Transcriptions)
+	authGroup.POST("/v1/audio/translations", audioHandler.Translations)
+
+	return router
+}
