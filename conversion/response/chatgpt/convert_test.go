@@ -9,7 +9,7 @@ import (
 )
 
 func TestConvertToStringUsesRequestModel(t *testing.T) {
-	previous := &typings.StringStruct{}
+	previous := &types.StringStruct{}
 	response := chatgpt_types.ChatGPTResponse{
 		Message: chatgpt_types.Message{
 			Author: chatgpt_types.Author{Role: "assistant"},
@@ -33,7 +33,7 @@ func TestConvertToStringUsesRequestModel(t *testing.T) {
 }
 
 func TestConvertToStringWaitsSourceMarkerForAnyModel(t *testing.T) {
-	previous := &typings.StringStruct{Text: "answer"}
+	previous := &types.StringStruct{Text: "answer"}
 	response := chatgpt_types.ChatGPTResponse{
 		Message: chatgpt_types.Message{
 			Author: chatgpt_types.Author{Role: "assistant"},

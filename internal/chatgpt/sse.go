@@ -1268,7 +1268,7 @@ func HandlerDetailedWithOptions(c *gin.Context, response *http.Response, client 
 		c.Header("Content-Type", "application/json")
 	}
 	var finish_reason string
-	var previous_text typings.StringStruct
+	var previous_text types.StringStruct
 	var original_response chatgpt_types.ChatGPTResponse
 	var isRole = true
 	var waitSource = false

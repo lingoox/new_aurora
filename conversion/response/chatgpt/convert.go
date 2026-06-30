@@ -8,7 +8,7 @@ import (
 	official_types "aurora/internal/types/official"
 )
 
-func ConvertToString(chatgpt_response *chatgpt_types.ChatGPTResponse, previous_text *typings.StringStruct, role bool, model string) string {
+func ConvertToString(chatgpt_response *chatgpt_types.ChatGPTResponse, previous_text *types.StringStruct, role bool, model string) string {
 	currentText := firstTextPart(chatgpt_response.Message.Content.Parts)
 	deltaText := strings.Replace(currentText, previous_text.Text, "", 1)
 	translated_response := official_types.NewChatCompletionChunk(deltaText, model)

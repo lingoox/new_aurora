@@ -1,4 +1,4 @@
-package typings
+package types
 
 type GenericResponseLine struct {
 	Line  string `json:"line"`
