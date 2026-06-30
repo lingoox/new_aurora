@@ -1,62 +1,63 @@
 package service
 
 import (
-	"os"
 	"testing"
 
+	"aurora/internal/config"
 	officialtypes "aurora/internal/types/official"
 )
 
 func TestContinueCountDefault(t *testing.T) {
-	// Ensure env var is unset
-	os.Unsetenv("MAX_CONTINUE_COUNT")
-	if maxContinueCount() != 3 {
-		t.Errorf("default continue count should be 3")
+	cfg := &config.Config{MaxContinueCount: 3, ToolCallingEnabled: true}
+	if n := maxContinueCount(cfg); n != 3 {
+		t.Errorf("default continue count should be 3, got %d", n)
+	}
+}
+
+func TestContinueCountNilConfig(t *testing.T) {
+	if n := maxContinueCount(nil); n != 3 {
+		t.Errorf("nil config should default to 3, got %d", n)
 	}
 }
 
 func TestToolCallingEnabled(t *testing.T) {
-	os.Unsetenv("TOOL_CALLING_ENABLED")
-	if !toolCallingEnabled(nil) {
-		t.Error("toolCallingEnabled(nil) should be true when env not set")
+	cfg := &config.Config{MaxContinueCount: 3, ToolCallingEnabled: true}
+	if !toolCallingEnabled(nil, cfg) {
+		t.Error("toolCallingEnabled(nil) should be true when enabled")
 	}
 }
 
 func TestContinueCountCustom(t *testing.T) {
-	os.Setenv("MAX_CONTINUE_COUNT", "5")
-	defer os.Unsetenv("MAX_CONTINUE_COUNT")
-	if maxContinueCount() != 5 {
-		t.Errorf("expected 5, got %d", maxContinueCount())
+	cfg := &config.Config{MaxContinueCount: 5, ToolCallingEnabled: true}
+	if n := maxContinueCount(cfg); n != 5 {
+		t.Errorf("expected 5, got %d", n)
 	}
 }
 
 func TestContinueCountZero(t *testing.T) {
-	os.Setenv("MAX_CONTINUE_COUNT", "0")
-	defer os.Unsetenv("MAX_CONTINUE_COUNT")
-	if maxContinueCount() != 0 {
-		t.Errorf("expected 0, got %d", maxContinueCount())
-	}
-}
-
-func TestContinueCountInvalid(t *testing.T) {
-	os.Setenv("MAX_CONTINUE_COUNT", "invalid")
-	defer os.Unsetenv("MAX_CONTINUE_COUNT")
-	if maxContinueCount() != 3 {
-		t.Errorf("expected 3 (default) for invalid value, got %d", maxContinueCount())
+	cfg := &config.Config{MaxContinueCount: 0, ToolCallingEnabled: true}
+	if n := maxContinueCount(cfg); n != 0 {
+		t.Errorf("expected 0, got %d", n)
 	}
 }
 
 func TestToolCallingEnabledFalse(t *testing.T) {
-	os.Setenv("TOOL_CALLING_ENABLED", "false")
-	defer os.Unsetenv("TOOL_CALLING_ENABLED")
-	if toolCallingEnabled([]officialtypes.Tool{{Type: "function"}}) {
-		t.Error("toolCallingEnabled should be false when env is false")
+	cfg := &config.Config{MaxContinueCount: 3, ToolCallingEnabled: false}
+	if toolCallingEnabled([]officialtypes.Tool{{Type: "function"}}, cfg) {
+		t.Error("toolCallingEnabled should be false when config disables it")
 	}
 }
 
 func TestToolCallingEnabledNoTools(t *testing.T) {
-	os.Unsetenv("TOOL_CALLING_ENABLED")
-	if toolCallingEnabled([]officialtypes.Tool{}) {
+	cfg := &config.Config{MaxContinueCount: 3, ToolCallingEnabled: true}
+	if toolCallingEnabled([]officialtypes.Tool{}, cfg) {
 		t.Error("toolCallingEnabled should be false with empty tools slice")
+	}
+}
+
+func TestToolCallingEnabledNilTools(t *testing.T) {
+	cfg := &config.Config{MaxContinueCount: 3, ToolCallingEnabled: true}
+	if !toolCallingEnabled(nil, cfg) {
+		t.Error("toolCallingEnabled(nil) should be true when config says enabled")
 	}
 }
