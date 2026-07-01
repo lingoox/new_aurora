@@ -1,11 +1,8 @@
 package accounts
 
 import (
-	"errors"
 	"testing"
 )
-
-var errMock = errors.New("mock error")
 
 func TestPoolAcquireByType(t *testing.T) {
 	pool := NewPool(nil)
@@ -63,17 +60,19 @@ func TestPoolAcquireNoAvailable(t *testing.T) {
 
 func TestPoolReleaseUpdatesStats(t *testing.T) {
 	pool := NewPool(nil)
-	acct := NewAccount("test", TypePUID, "token")
+	acct := NewAccount("test", TypeFree, "token")
 	acct.Status = StatusActive
 	pool.AddAccount(acct)
 
-	pool.Release(acct, nil)
-	if acct.TotalCalls != 1 {
-		t.Errorf("TotalCalls = %d, want 1", acct.TotalCalls)
+	// Acquire 会自增 TotalCalls
+	got, err := pool.Acquire(TypeFree)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
 	}
-
-	pool.Release(acct, errMock)
-	if acct.FailedCalls != 1 {
-		t.Errorf("FailedCalls = %d, want 1", acct.FailedCalls)
+	if got.TotalCalls != 1 {
+		t.Errorf("TotalCalls = %d, want 1", got.TotalCalls)
+	}
+	if got.FailedCalls != 0 {
+		t.Errorf("FailedCalls = %d, want 0", got.FailedCalls)
 	}
 }

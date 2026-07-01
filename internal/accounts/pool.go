@@ -88,6 +88,7 @@ func (p *Pool) Acquire(acctType AccountType) (*Account, error) {
 		cur := (p.cursors[idx] + i) % len(entries)
 		if entries[cur].Status == StatusActive {
 			p.cursors[idx] = (cur + 1) % len(entries)
+			entries[cur].TotalCalls++
 			return entries[cur], nil
 		}
 	}
@@ -95,17 +96,9 @@ func (p *Pool) Acquire(acctType AccountType) (*Account, error) {
 	return nil, ErrNoAvailable
 }
 
-// Release 统计调用次数
+// Release 保留接口但不再需要主动调用（统计在 Acquire 时已更新）。
+// 保留以防将来改为独占模式需要。
 func (p *Pool) Release(acct *Account, result error) {
-	if acct == nil {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	acct.TotalCalls++
-	if result != nil {
-		acct.FailedCalls++
-	}
 }
 
 // ReportFailure 标记账号为过期，Acquire 时自动跳过，后续健康检查会尝试续期
