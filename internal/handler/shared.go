@@ -64,7 +64,7 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 
 	// 无 token 或匹配全局密钥 → 从池里取默认账号
 	if token == "" || (expected != "" && token == expected) {
-		acct, err := pool.Acquire(accounts.TypePUID)
+		acct, err := pool.Acquire(accounts.TypeFree)
 		if err != nil {
 			// 没有 paid 时降级到 free
 			acct, err = pool.Acquire(accounts.TypeFree)
@@ -80,7 +80,7 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 
 	// access_token (JWT) → 创建临时账号
 	if strings.HasPrefix(token, "eyJ") {
-		acct := accounts.NewAccount(token, accounts.TypePUID, token)
+		acct := accounts.NewAccount(token, accounts.TypeFree, token)
 		acct.TeamUserID = teamAccountID
 		if err := acct.InitClient(); err != nil {
 			return nil, http.StatusInternalServerError, err
@@ -111,7 +111,7 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 		}
 		if data, ok := result.(map[string]interface{}); ok {
 			if accessToken, ok := data["access_token"].(string); ok && accessToken != "" {
-				acct := accounts.NewAccount(accessToken, accounts.TypePUID, accessToken)
+				acct := accounts.NewAccount(accessToken, accounts.TypeFree, accessToken)
 				acct.TeamUserID = teamAccountID
 				acct.RefreshToken = token
 				if err := acct.InitClient(); err != nil {
@@ -125,7 +125,7 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 	}
 
 	// 兜底：从池里取
-	acct, err := pool.Acquire(accounts.TypePUID)
+	acct, err := pool.Acquire(accounts.TypeFree)
 	if err != nil {
 		acct, err = pool.Acquire(accounts.TypeFree)
 		if err != nil {

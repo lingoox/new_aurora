@@ -132,7 +132,7 @@ func TestResolveAccountWithGlobalKey(t *testing.T) {
 	c.Request.Header.Set("Authorization", "Bearer my-global-key")
 
 	pool := accounts.NewPool(nil)
-	acct := accounts.NewAccount("test", accounts.TypePUID, "test-token")
+	acct := accounts.NewAccount("test", accounts.TypeFree, "test-token")
 	acct.Status = accounts.StatusActive
 	pool.AddAccount(acct)
 	cfg := &config.Config{Authorization: "my-global-key"}

@@ -46,7 +46,7 @@ func Init() (*App, error) {
 
 	// 1. access_tokens.txt — 纯 access token，不可续期
 	for _, t := range accounts.LoadTokensFromFile("access_tokens.txt") {
-		acct := accounts.CreateAccount(t.Token, accounts.TypePUID, profiles)
+		acct := accounts.CreateAccount(t.Token, accounts.TypeFree, profiles)
 		acct.TeamUserID = t.TeamID
 		acct.Status = accounts.StatusActive
 		accs = append(accs, acct)
@@ -54,7 +54,7 @@ func Init() (*App, error) {
 
 	// 2. refresh_tokens.txt — 带 refresh_token，可续期
 	for _, t := range accounts.LoadTokensFromFile("refresh_tokens.txt") {
-		acct := accounts.CreateAccount("", accounts.TypePUID, profiles)
+		acct := accounts.CreateAccount("", accounts.TypeFree, profiles)
 		acct.RefreshToken = t.Token
 		acct.TeamUserID = t.TeamID
 		// 立即交换一次获取 access_token
