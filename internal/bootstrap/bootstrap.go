@@ -4,13 +4,16 @@ import (
 	"os"
 	"strings"
 
+	"aurora/httpclient/bogdanfinn"
 	"aurora/internal/accounts"
 	"aurora/internal/browserfp"
+	"aurora/internal/chatgpt"
 	"aurora/internal/config"
 	"aurora/internal/handler"
 	"aurora/internal/proxy"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
 
@@ -32,19 +35,70 @@ func Init() (*App, error) {
 	// 初始化代理池
 	proxies := loadProxyList()
 	proxyPool := proxy.NewPool(proxies, "")
-	_ = proxyPool // 账号创建时按需分配
+	_ = proxyPool
 
-	// 初始化账号池
-	accs := accounts.InitAccountsFromConfig(
-		"access_tokens.txt",
-		"free_tokens.txt",
-		cfg.FreeAccounts,
-		cfg.FreeAccountsNum,
-		accounts.DefaultProfiles,
-	)
+	// ─── 加载账号 ────────────────────────────────────────────────
+
+	profiles := accounts.DefaultProfiles
+	var accs []*accounts.Account
+
+	// 1. access_tokens.txt — 纯 access token，不可续期
+	for _, t := range accounts.LoadTokensFromFile("access_tokens.txt") {
+		acct := accounts.CreateAccount(t.Token, accounts.TypePUID, profiles)
+		acct.TeamUserID = t.TeamID
+		acct.Status = accounts.StatusActive
+		accs = append(accs, acct)
+	}
+
+	// 2. refresh_tokens.txt — 带 refresh_token，可续期
+	for _, t := range accounts.LoadTokensFromFile("refresh_tokens.txt") {
+		acct := accounts.CreateAccount("", accounts.TypePUID, profiles)
+		acct.RefreshToken = t.Token
+		acct.TeamUserID = t.TeamID
+		// 立即交换一次获取 access_token
+		if exchangeRefreshToken(acct) {
+			acct.Status = accounts.StatusActive
+		} else {
+			acct.Status = accounts.StatusExpired
+		}
+		accs = append(accs, acct)
+	}
+
+	// 3. session_tokens.txt — ChatGPT session token，用于免费账号续期
+	for _, t := range accounts.LoadTokensFromFile("session_tokens.txt") {
+		acct := accounts.CreateAccount("", accounts.TypeFree, profiles)
+		acct.SessionToken = t.Token
+		// 立即交换一次获取 access_token
+		if exchangeSessionToken(acct) {
+			acct.Status = accounts.StatusActive
+		} else {
+			acct.Status = accounts.StatusExpired
+		}
+		accs = append(accs, acct)
+	}
+
+	// 4. free_tokens.txt — 设备 UUID
+	for _, t := range accounts.LoadTokensFromFile("free_tokens.txt") {
+		acct := accounts.CreateAccount(t.Token, accounts.TypeNoAuth, profiles)
+		acct.Status = accounts.StatusActive
+		accs = append(accs, acct)
+	}
+
+	// 5. FREE_ACCOUNTS — 自动生成 UUID 账号
+	if cfg.FreeAccounts {
+		for i := 0; i < cfg.FreeAccountsNum; i++ {
+			uid := uuid.NewString()
+			acct := accounts.CreateAccount(uid, accounts.TypeNoAuth, profiles)
+			acct.Status = accounts.StatusActive
+			accs = append(accs, acct)
+		}
+	}
+
+	// 初始化 TLS Client
 	for _, acct := range accs {
 		_ = acct.InitClient()
 	}
+
 	accountPool := accounts.NewPool(accs)
 
 	// 注册路由
@@ -55,6 +109,44 @@ func Init() (*App, error) {
 		Config:      &cfg,
 		AccountPool: accountPool,
 	}, nil
+}
+
+// exchangeRefreshToken 用 refresh_token 换 access_token
+func exchangeRefreshToken(acct *accounts.Account) bool {
+	if acct.RefreshToken == "" {
+		return false
+	}
+	client := bogdanfinn.NewStdClient()
+	result, _, err := chatgpt.GETTokenForRefreshToken(client, acct.RefreshToken, "")
+	if err != nil {
+		return false
+	}
+	if data, ok := result.(map[string]interface{}); ok {
+		if accessToken, ok := data["access_token"].(string); ok && accessToken != "" {
+			acct.Token = accessToken
+			return true
+		}
+	}
+	return false
+}
+
+// exchangeSessionToken 用 session_token 换 access_token
+func exchangeSessionToken(acct *accounts.Account) bool {
+	if acct.SessionToken == "" {
+		return false
+	}
+	client := bogdanfinn.NewStdClient()
+	result, _, err := chatgpt.GETTokenForSessionToken(client, acct.SessionToken, "")
+	if err != nil {
+		return false
+	}
+	if data, ok := result.(map[string]interface{}); ok {
+		if accessToken, ok := data["access_token"].(string); ok && accessToken != "" {
+			acct.Token = accessToken
+			return true
+		}
+	}
+	return false
 }
 
 // loadProxyList 从 proxies.txt / PROXY_URL / http_proxy 加载代理列表

@@ -9,23 +9,21 @@ import (
 	"github.com/google/uuid"
 )
 
-// LoadedSecret 从文件加载的 token 信息
-type LoadedSecret struct {
-	Token  string
-	TeamID string
-	IsFree bool
+// RawToken 从文件加载的原始 token 信息
+type RawToken struct {
+	Token     string // access_token / refresh_token / session_token
+	TeamID    string // 冒号后（仅 access_tokens.txt 支持）
 }
 
-// LoadTokensFromFile 从文件读取 token，兼容原格式
-// 空行和 # 开头的行被忽略
-func LoadTokensFromFile(path string) []LoadedSecret {
+// LoadTokensFromFile 从文件读取 token，空行和 # 开头被忽略
+func LoadTokensFromFile(path string) []RawToken {
 	f, err := os.Open(path)
 	if err != nil {
-		return []LoadedSecret{}
+		return []RawToken{}
 	}
 	defer f.Close()
 
-	var secrets []LoadedSecret
+	var tokens []RawToken
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -37,68 +35,23 @@ func LoadTokensFromFile(path string) []LoadedSecret {
 		if token == "" {
 			continue
 		}
-		secret := LoadedSecret{Token: token}
+		t := RawToken{Token: token}
 		if len(parts) > 1 {
-			secret.TeamID = strings.TrimSpace(parts[1])
+			t.TeamID = strings.TrimSpace(parts[1])
 		}
-		secrets = append(secrets, secret)
+		tokens = append(tokens, t)
 	}
-	return secrets
+	return tokens
 }
 
-// InitAccountsFromConfig 根据配置初始化账号池
-// 从 access_tokens.txt / free_tokens.txt 加载，必要时生成 free UUID
-func InitAccountsFromConfig(
-	accessTokenPath string,
-	freeTokenPath string,
-	freeAccounts bool,
-	freeAccountsNum int,
-	profilePool []FingerprintProfile,
-) []*Account {
-	var accounts []*Account
-
-	// 加载 paid token
-	for _, s := range LoadTokensFromFile(accessTokenPath) {
-		acct := NewAccount(uuid.NewString(), TypePUID, s.Token)
-		if s.TeamID != "" {
-			acct.TeamUserID = s.TeamID
-		}
-		acct.Fingerprint = randomProfile(profilePool)
-		acct.Status = StatusActive
-		if err := acct.InitClient(); err != nil {
-			continue
-		}
-		accounts = append(accounts, acct)
-	}
-
-	// 加载 free token
-	for _, s := range LoadTokensFromFile(freeTokenPath) {
-		acct := NewAccount(uuid.NewString(), TypeFree, s.Token)
-		acct.Fingerprint = randomProfile(profilePool)
-		acct.Status = StatusActive
-		if err := acct.InitClient(); err != nil {
-			continue
-		}
-		accounts = append(accounts, acct)
-	}
-
-	// 生成 free UUID 账号
-	if freeAccounts {
-		for i := 0; i < freeAccountsNum; i++ {
-			uid := uuid.NewString()
-			acct := NewAccount(uid, TypeNoAuth, uid)
-			acct.Fingerprint = randomProfile(profilePool)
-			acct.Status = StatusActive
-			if err := acct.InitClient(); err != nil {
-				continue
-			}
-			accounts = append(accounts, acct)
-		}
-	}
-
-	return accounts
+// CreateAccount 从原始 token 创建 Account，分配指纹但不初始化 Client
+func CreateAccount(token string, acctType AccountType, profilePool []FingerprintProfile) *Account {
+	acct := NewAccount(uuid.NewString(), acctType, token)
+	acct.Fingerprint = randomProfile(profilePool)
+	return acct
 }
 
+// randomProfile 从画像池随机选一个
 func randomProfile(profiles []FingerprintProfile) BrowserFingerprint {
 	if len(profiles) == 0 {
 		return BrowserFingerprint{

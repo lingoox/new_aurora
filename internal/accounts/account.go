@@ -70,8 +70,9 @@ type Account struct {
 	Type AccountType
 
 	// 认证
-	Token        string // access_token 或 UUID
-	RefreshToken string // 仅 free/puid 有
+	Token         string // access_token 或 UUID
+	RefreshToken  string // 用于自动续期（/auth/refresh）
+	SessionToken  string // 仅免费账号有，用于续期（/auth/session）
 
 	// 身份
 	PUID       string
