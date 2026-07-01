@@ -115,7 +115,7 @@ func TestResolveAccountEmptyPool(t *testing.T) {
 	pool := accounts.NewPool(nil)
 	cfg := &config.Config{}
 
-	acct, err := resolveAccount(c, pool, cfg, false)
+	acct, _, err := resolveAccount(c, pool, cfg, false)
 	if err == nil {
 		t.Fatal("expected error with empty pool")
 	}
@@ -137,7 +137,7 @@ func TestResolveAccountWithGlobalKey(t *testing.T) {
 	pool.AddAccount(acct)
 	cfg := &config.Config{Authorization: "my-global-key"}
 
-	result, err := resolveAccount(c, pool, cfg, false)
+	result, _, err := resolveAccount(c, pool, cfg, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

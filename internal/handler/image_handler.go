@@ -154,7 +154,7 @@ func (h *ImageHandler) Generations(c *gin.Context) {
 		imageRequest.ResponseFormat = "b64_json"
 	}
 
-	account, err := resolveAccount(c, h.accountPool, h.cfg, true)
+	account, _, err := resolveAccount(c, h.accountPool, h.cfg, true)
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -860,7 +860,7 @@ func (h *ImageHandler) runImageEditFlow(c *gin.Context, asVariation bool) {
 	}
 	stream = requestStreamFlag(c, stream)
 
-	account, err := resolveAccount(c, h.accountPool, h.cfg, true)
+	account, _, err := resolveAccount(c, h.accountPool, h.cfg, true)
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),

@@ -75,7 +75,7 @@ func (h *AudioHandler) TTS(c *gin.Context) {
 		return
 	}
 
-	account, err := resolveAccount(c, h.accountPool, h.cfg, true)
+	account, _, err := resolveAccount(c, h.accountPool, h.cfg, true)
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -247,7 +247,7 @@ func (h *AudioHandler) handleTranscription(c *gin.Context, isTranslation bool) {
 		return
 	}
 
-	account, err := resolveAccount(c, h.accountPool, h.cfg, true)
+	account, _, err := resolveAccount(c, h.accountPool, h.cfg, true)
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),

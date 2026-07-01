@@ -56,7 +56,7 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 		return
 	}
 
-	account, err := resolveAccount(c, h.accountPool, h.cfg, original_requestHasFiles(original_request))
+	account, _, err := resolveAccount(c, h.accountPool, h.cfg, original_requestHasFiles(original_request))
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -260,7 +260,7 @@ func (h *ChatHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	account, err := resolveAccount(c, h.accountPool, h.cfg, original_requestHasFiles(original_request))
+	account, _, err := resolveAccount(c, h.accountPool, h.cfg, original_requestHasFiles(original_request))
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -388,7 +388,7 @@ func (h *ChatHandler) Responses(c *gin.Context) {
 }
 
 func (h *ChatHandler) Files(c *gin.Context) {
-	account, err := resolveAccount(c, h.accountPool, h.cfg, true)
+	account, _, err := resolveAccount(c, h.accountPool, h.cfg, true)
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": "Files API requires a logged-in ChatGPT access token.",
@@ -568,7 +568,7 @@ func (h *ChatHandler) ChatGPTConversation(c *gin.Context) {
 		original_request.Messages[0].Author.Role = "user"
 	}
 
-	account, err := resolveAccount(c, h.accountPool, h.cfg, false)
+	account, _, err := resolveAccount(c, h.accountPool, h.cfg, false)
 	if err != nil {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": err.Error(),

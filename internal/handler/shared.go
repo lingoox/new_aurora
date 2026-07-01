@@ -15,13 +15,15 @@ import (
 	chatgpt_types "aurora/internal/types/chatgpt"
 	officialtypes "aurora/internal/types/official"
 	"aurora/util"
-		"aurora/internal/config"
+	"aurora/internal/config"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	fhttp "github.com/bogdanfinn/fhttp"
 	"github.com/bogdanfinn/websocket"
 )
+
+var ErrNoAvailable = errors.New("no available account of the requested type")
 
 func respondError(c *gin.Context, status int, err error) {
 	c.JSON(status, gin.H{"error": gin.H{
@@ -34,7 +36,8 @@ func respondError(c *gin.Context, status int, err error) {
 
 // resolveAccount 从请求 Authorization header 解析账号
 // 替代旧的 secretFromAuthorization + accessTokenFromRefreshToken
-func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, needsPaid bool) (*accounts.Account, error) {
+// 返回 (account, http_status, error)
+func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, needsPaid bool) (*accounts.Account, int, error) {
 	authHeader := c.GetHeader("Authorization")
 
 	// 提取 Bearer token
@@ -49,15 +52,30 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 		teamAccountID = strings.TrimSpace(parts[1])
 	}
 
+	// 补充检查专用 header: ChatGPT-Account-ID, Team-Account-ID 等
+	for _, header := range []string{"ChatGPT-Account-ID", "Chatgpt-Account-Id", "Team-Account-ID", "X-ChatGPT-Account-ID"} {
+		if value := strings.TrimSpace(c.GetHeader(header)); value != "" {
+			teamAccountID = value
+			break
+		}
+	}
+
 	expected := cfg.Authorization
 
 	// 无 token 或匹配全局密钥 → 从池里取默认账号
 	if token == "" || (expected != "" && token == expected) {
 		acct, err := pool.Acquire(accounts.TypePUID)
 		if err != nil {
-			return nil, err
+			// 没有 paid 时降级到 free
+			acct, err = pool.Acquire(accounts.TypeFree)
+			if err != nil {
+				return nil, http.StatusUnauthorized, ErrNoAvailable
+			}
 		}
-		return acct, nil
+		if needsPaid && acct.Type != accounts.TypePUID {
+			return nil, http.StatusForbidden, errors.New("this endpoint requires a paid ChatGPT account")
+		}
+		return acct, http.StatusOK, nil
 	}
 
 	// access_token (JWT) → 创建临时账号
@@ -65,28 +83,31 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 		acct := accounts.NewAccount(token, accounts.TypePUID, token)
 		acct.TeamUserID = teamAccountID
 		if err := acct.InitClient(); err != nil {
-			return nil, err
+			return nil, http.StatusInternalServerError, err
 		}
 		acct.Status = accounts.StatusActive
-		return acct, nil
+		return acct, http.StatusOK, nil
 	}
 
 	// UUID → noauth 账号
 	if _, err := uuid.Parse(token); err == nil {
+		if needsPaid {
+			return nil, http.StatusForbidden, errors.New("this endpoint requires a paid ChatGPT account")
+		}
 		acct := accounts.NewAccount(token, accounts.TypeNoAuth, token)
 		if err := acct.InitClient(); err != nil {
-			return nil, err
+			return nil, http.StatusInternalServerError, err
 		}
 		acct.Status = accounts.StatusActive
-		return acct, nil
+		return acct, http.StatusOK, nil
 	}
 
-	// refresh_token（有 team id 或长 token）→ 换 access_token
+	// refresh_token → 换 access_token
 	if teamAccountID != "" || len(token) > 64 {
 		client := bogdanfinn.NewStdClient()
-		result, _, err := chatgpt.GETTokenForRefreshToken(client, token, cfg.ProxyURL)
+		result, status, err := chatgpt.GETTokenForRefreshToken(client, token, cfg.ProxyURL)
 		if err != nil {
-			return nil, err
+			return nil, status, err
 		}
 		if data, ok := result.(map[string]interface{}); ok {
 			if accessToken, ok := data["access_token"].(string); ok && accessToken != "" {
@@ -94,21 +115,27 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 				acct.TeamUserID = teamAccountID
 				acct.RefreshToken = token
 				if err := acct.InitClient(); err != nil {
-					return nil, err
+					return nil, http.StatusInternalServerError, err
 				}
 				acct.Status = accounts.StatusActive
-				return acct, nil
+				return acct, http.StatusOK, nil
 			}
 		}
-		return nil, errors.New("refresh token response did not include access_token")
+		return nil, http.StatusBadRequest, errors.New("refresh token response did not include access_token")
 	}
 
 	// 兜底：从池里取
 	acct, err := pool.Acquire(accounts.TypePUID)
 	if err != nil {
-		return nil, err
+		acct, err = pool.Acquire(accounts.TypeFree)
+		if err != nil {
+			return nil, http.StatusUnauthorized, ErrNoAvailable
+		}
 	}
-	return acct, nil
+	if needsPaid && acct.Type != accounts.TypePUID {
+		return nil, http.StatusForbidden, errors.New("this endpoint requires a paid ChatGPT account")
+	}
+	return acct, http.StatusOK, nil
 }
 
 // conversationClientOrder 执行标准的 conversation 流程：
