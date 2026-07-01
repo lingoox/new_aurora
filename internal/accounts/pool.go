@@ -10,7 +10,7 @@ var ErrNoAvailable = errors.New("no available account of the requested type")
 // Pool 账号池管理
 type Pool struct {
 	mu       sync.Mutex
-	accounts []*Account
+	entries []*Account
 	cursor   int
 }
 
@@ -19,7 +19,7 @@ func NewPool(initial []*Account) *Pool {
 		initial = []*Account{}
 	}
 	return &Pool{
-		accounts: initial,
+		entries: initial,
 	}
 }
 
@@ -27,7 +27,7 @@ func NewPool(initial []*Account) *Pool {
 func (p *Pool) AddAccount(acct *Account) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.accounts = append(p.accounts, acct)
+	p.entries = append(p.entries, acct)
 }
 
 // Acquire 按类型获取一个可用账号
@@ -35,15 +35,15 @@ func (p *Pool) Acquire(acctType AccountType) (*Account, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if len(p.accounts) == 0 {
+	if len(p.entries) == 0 {
 		return nil, ErrNoAvailable
 	}
 
-	for i := 0; i < len(p.accounts); i++ {
-		idx := (p.cursor + i) % len(p.accounts)
-		acct := p.accounts[idx]
+	for i := 0; i < len(p.entries); i++ {
+		idx := (p.cursor + i) % len(p.entries)
+		acct := p.entries[idx]
 		if acct.Status == StatusActive && acct.Type == acctType {
-			p.cursor = (idx + 1) % len(p.accounts)
+			p.cursor = (idx + 1) % len(p.entries)
 			return acct, nil
 		}
 	}
@@ -74,7 +74,7 @@ func (p *Pool) ReportFailure(acct *Account) bool {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for _, a := range p.accounts {
+	for _, a := range p.entries {
 		if a.ID == acct.ID {
 			a.Status = StatusDisabled
 			a.FailedCalls++
