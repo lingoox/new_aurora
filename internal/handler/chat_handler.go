@@ -109,7 +109,7 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 		return
 	}
 
-	response, wsConn, turnStile, status, err := conversationClientOrder(&client, account, translated_request, proxyUrl, original_request.Stream, clientState)
+	response, wsConn, turnStile, status, err := conversationClientOrder(&client, account, translated_request, proxyUrl, original_request.Stream, clientState, h.accountPool)
 	if err != nil {
 		c.JSON(status, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -189,7 +189,7 @@ func (h *ChatHandler) Nightmare(c *gin.Context) {
 		translated_request.ConversationID = continue_info.ConversationID
 		translated_request.ParentMessageID = continue_info.ParentID
 
-		response, wsConn, _, status, err = conversationClientOrder(&client, account, translated_request, proxyUrl, original_request.Stream, clientState)
+		response, wsConn, _, status, err = conversationClientOrder(&client, account, translated_request, proxyUrl, original_request.Stream, clientState, h.accountPool)
 		if err != nil {
 			c.JSON(status, gin.H{"error": gin.H{
 				"message": err.Error(),
@@ -302,7 +302,7 @@ func (h *ChatHandler) Responses(c *gin.Context) {
 		reqModel = "auto"
 	}
 
-	response, wsConn, _, status, err := conversationClientOrder(&client, account, translated_request, proxyUrl, false, clientState)
+	response, wsConn, _, status, err := conversationClientOrder(&client, account, translated_request, proxyUrl, false, clientState, h.accountPool)
 	if err != nil {
 		c.JSON(status, gin.H{"error": gin.H{
 			"message": err.Error(),
@@ -348,7 +348,7 @@ func (h *ChatHandler) Responses(c *gin.Context) {
 		translated_request.ConversationID = continue_info.ConversationID
 		translated_request.ParentMessageID = continue_info.ParentID
 
-		response, wsConn, _, status, err = conversationClientOrder(&client, account, translated_request, proxyUrl, false, clientState)
+		response, wsConn, _, status, err = conversationClientOrder(&client, account, translated_request, proxyUrl, false, clientState, h.accountPool)
 		if err != nil {
 			c.JSON(status, gin.H{"error": gin.H{
 				"message": err.Error(),
@@ -484,7 +484,7 @@ func (h *ChatHandler) handleToolCalling(c *gin.Context, originalRequest *officia
 			translated.AddMessage("user", retrySuffix)
 		}
 
-		response, wsConn, _, status, err := conversationClientOrder(client, account, translated, *proxyUrl, false, *clientState)
+		response, wsConn, _, status, err := conversationClientOrder(client, account, translated, *proxyUrl, false, *clientState, h.accountPool)
 		if err != nil {
 			c.JSON(status, gin.H{"error": gin.H{
 				"message": err.Error(),

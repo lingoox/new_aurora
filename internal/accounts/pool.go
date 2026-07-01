@@ -65,3 +65,21 @@ func (p *Pool) Release(acct *Account, result error) {
 		acct.FailedCalls++
 	}
 }
+
+// ReportFailure 标记账号为不可用（如 token 过期），Acquire 时会自动跳过。
+// 返回 true 表示成功标记，false 表示账号不在池中。
+func (p *Pool) ReportFailure(acct *Account) bool {
+	if acct == nil {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, a := range p.accounts {
+		if a.ID == acct.ID {
+			a.Status = StatusDisabled
+			a.FailedCalls++
+			return true
+		}
+	}
+	return false
+}

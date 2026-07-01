@@ -103,7 +103,7 @@ func (h *AudioHandler) TTS(c *gin.Context) {
 	clientState.ConversationID = translated_request.ConversationID
 	clientState.ParentMessageID = translated_request.ParentMessageID
 
-	response, wsConn, _, status, err := conversationClientOrder(&client, account, translated_request, proxyUrl, false, clientState)
+	response, wsConn, _, status, err := conversationClientOrder(&client, account, translated_request, proxyUrl, false, clientState, h.accountPool)
 	if err != nil {
 		c.JSON(status, gin.H{"error": gin.H{
 			"message": err.Error(),

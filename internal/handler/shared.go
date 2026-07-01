@@ -142,27 +142,22 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 // sentinel → init → ws → prepare → POST
 //
 // 对齐 initialize/handlers.go:postConversationGptClientOrder
-func conversationClientOrder(client **bogdanfinn.TlsClient, account *accounts.Account, translatedRequest chatgpt_types.ChatGPTRequest, proxyUrl string, stream bool, state *chatgpt.ChatClientState) (*http.Response, *websocket.Conn, *chatgpt.TurnStile, int, error) {
+// pool 参数用于在 sentinel 401 时标记账号不可用
+func conversationClientOrder(client **bogdanfinn.TlsClient, account *accounts.Account, translatedRequest chatgpt_types.ChatGPTRequest, proxyUrl string, stream bool, state *chatgpt.ChatClientState, pool *accounts.Pool) (*http.Response, *websocket.Conn, *chatgpt.TurnStile, int, error) {
 	if state != nil {
 		state.ApplyToRequest(&translatedRequest)
 	}
 	turnTraceID := uuid.NewString()
 
-	// 对齐浏览器: sentinel 前设置 BasicCookies
 	(*client).SetCookies("https://chatgpt.com", chatgpt.BasicCookies)
 
 	turnStile, status, err := chatgpt.InitSentinelWithState(*client, account, proxyUrl, 0, state)
 	if err != nil {
-		// 401 时重试一次（cookies 可能过期）
-		if status == http.StatusUnauthorized {
-			(*client).SetCookies("https://chatgpt.com", chatgpt.BasicCookies)
-			turnStile, status, err = chatgpt.InitSentinelWithState(*client, account, proxyUrl, 0, state)
-			if err != nil {
-				return nil, nil, nil, status, err
-			}
-		} else {
-			return nil, nil, nil, status, err
+		// sentinel 401 说明 token 可能过期，标记账号让 pool 后续绕过
+		if status == http.StatusUnauthorized && pool != nil {
+			pool.ReportFailure(account)
 		}
+		return nil, nil, nil, status, err
 	}
 
 	chatgpt.POSTConversationInit(*client, account, state)
