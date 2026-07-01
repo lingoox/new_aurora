@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"io"
+"net/http"
 	"os"
 	"time"
 
@@ -589,6 +590,9 @@ func (h *ChatHandler) ChatGPTConversation(c *gin.Context) {
 	}
 	turnStile, status, err := chatgpt.InitSentinel(client, account, account.Proxy, 0)
 	if err != nil {
+		if status == http.StatusUnauthorized {
+			h.accountPool.ReportFailure(account)
+		}
 		c.JSON(status, gin.H{
 			"message": err.Error(),
 			"type":    "InitTurnStile_request_error",

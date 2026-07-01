@@ -66,14 +66,10 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 	if token == "" || (expected != "" && token == expected) {
 		acct, err := pool.Acquire(accounts.TypeFree)
 		if err != nil {
-			// 没有 paid 时降级到 free
-			acct, err = pool.Acquire(accounts.TypeFree)
-			if err != nil {
-				return nil, http.StatusUnauthorized, ErrNoAvailable
-			}
+			return nil, http.StatusUnauthorized, ErrNoAvailable
 		}
-		if needsPaid && acct.Type != accounts.TypeNoAuth {
-			return nil, http.StatusForbidden, errors.New("this endpoint requires a paid ChatGPT account")
+		if needsPaid && acct.Type == accounts.TypeNoAuth {
+			return nil, http.StatusForbidden, errors.New("this endpoint requires a logged-in ChatGPT account")
 		}
 		return acct, http.StatusOK, nil
 	}
@@ -127,13 +123,10 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 	// 兜底：从池里取
 	acct, err := pool.Acquire(accounts.TypeFree)
 	if err != nil {
-		acct, err = pool.Acquire(accounts.TypeFree)
-		if err != nil {
-			return nil, http.StatusUnauthorized, ErrNoAvailable
-		}
+		return nil, http.StatusUnauthorized, ErrNoAvailable
 	}
-	if needsPaid && acct.Type != accounts.TypeNoAuth {
-		return nil, http.StatusForbidden, errors.New("this endpoint requires a paid ChatGPT account")
+	if needsPaid && acct.Type == accounts.TypeNoAuth {
+		return nil, http.StatusForbidden, errors.New("this endpoint requires a logged-in ChatGPT account")
 	}
 	return acct, http.StatusOK, nil
 }

@@ -176,8 +176,12 @@ func (h *ImageHandler) Generations(c *gin.Context) {
 
 	proxyUrl := account.Proxy
 	client := setupClientWithProxy(proxyUrl)
+	client.SetCookies("https://chatgpt.com", chatgpt.BasicCookies)
 	turnStile, status, err := chatgpt.InitSentinel(client, account, proxyUrl, 0)
 	if err != nil {
+		if status == http.StatusUnauthorized {
+			h.accountPool.ReportFailure(account)
+		}
 		c.JSON(status, gin.H{
 			"message": err.Error(),
 			"type":    "InitTurnStile_request_error",
@@ -882,8 +886,12 @@ func (h *ImageHandler) runImageEditFlow(c *gin.Context, asVariation bool) {
 
 	proxyUrl := account.Proxy
 	client := setupClientWithProxy(proxyUrl)
+	client.SetCookies("https://chatgpt.com", chatgpt.BasicCookies)
 	turnStile, status, err := chatgpt.InitSentinel(client, account, proxyUrl, 0)
 	if err != nil {
+		if status == http.StatusUnauthorized {
+			h.accountPool.ReportFailure(account)
+		}
 		c.JSON(status, gin.H{
 			"message": err.Error(),
 			"type":    "InitTurnStile_request_error",
