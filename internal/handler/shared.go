@@ -84,7 +84,7 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 	// refresh_token（有 team id 或长 token）→ 换 access_token
 	if teamAccountID != "" || len(token) > 64 {
 		client := bogdanfinn.NewStdClient()
-		result, _, err := chatgpt.GETTokenForRefreshToken(client, token, "")
+		result, _, err := chatgpt.GETTokenForRefreshToken(client, token, cfg.ProxyURL)
 		if err != nil {
 			return nil, err
 		}
@@ -121,9 +121,21 @@ func conversationClientOrder(client **bogdanfinn.TlsClient, account *accounts.Ac
 	}
 	turnTraceID := uuid.NewString()
 
+	// 对齐浏览器: sentinel 前设置 BasicCookies
+	(*client).SetCookies("https://chatgpt.com", chatgpt.BasicCookies)
+
 	turnStile, status, err := chatgpt.InitSentinelWithState(*client, account, proxyUrl, 0, state)
 	if err != nil {
-		return nil, nil, nil, status, err
+		// 401 时重试一次（cookies 可能过期）
+		if status == http.StatusUnauthorized {
+			(*client).SetCookies("https://chatgpt.com", chatgpt.BasicCookies)
+			turnStile, status, err = chatgpt.InitSentinelWithState(*client, account, proxyUrl, 0, state)
+			if err != nil {
+				return nil, nil, nil, status, err
+			}
+		} else {
+			return nil, nil, nil, status, err
+		}
 	}
 
 	chatgpt.POSTConversationInit(*client, account, state)

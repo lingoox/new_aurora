@@ -398,7 +398,7 @@ func (h *ChatHandler) Files(c *gin.Context) {
 		}})
 		return
 	}
-	if account == nil || account.Token == "" {
+	if account == nil || account.Token == "" || account.Type != accounts.TypePUID {
 		c.JSON(400, gin.H{"error": gin.H{
 			"message": "Files API requires a logged-in ChatGPT access token.",
 			"type":    "invalid_request_error",
@@ -578,7 +578,7 @@ func (h *ChatHandler) ChatGPTConversation(c *gin.Context) {
 		}})
 		return
 	}
-	if account == nil || account.Token == "" {
+	if account == nil || account.Token == "" || account.Type != accounts.TypePUID {
 		c.JSON(400, gin.H{"error": "Not Account Found."})
 		return
 	}
