@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log"
+
 	"aurora/internal/bootstrap"
 
 	"github.com/g-utils/endless"
@@ -29,5 +31,10 @@ func main() {
 		_ = endless.ListenAndServeTLS(host+":"+port, tlsCert, tlsKey, app.Router)
 	} else {
 		_ = endless.ListenAndServe(host+":"+port, app.Router)
+	}
+
+	if app.Cleanup != nil {
+		log.Println("[server] shutting down, stopping background goroutines...")
+		app.Cleanup()
 	}
 }

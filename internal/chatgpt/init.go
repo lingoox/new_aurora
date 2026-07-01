@@ -308,7 +308,7 @@ func POSTSentinelPingWithSource(client httpclient.AuroraHttpClient, account *acc
 }
 
 func sentinelURL(account *accounts.Account, path string) (string, string) {
-	if account != nil && account.Type != accounts.TypePUID {
+	if account != nil && account.Type == accounts.TypeNoAuth {
 		return strings.Replace(BaseURL, "backend-api", "backend-anon", 1) + path, "/backend-anon" + path
 	}
 	return BaseURL + path, "/backend-api" + path
@@ -324,10 +324,10 @@ func sentinelHeaderWithState(account *accounts.Account, targetPath string, state
 	header.Set("Content-Type", "application/json")
 	header.Set("X-Openai-Target-Path", targetPath)
 	header.Set("X-Openai-Target-Route", targetPath)
-	if account != nil && account.Type != accounts.TypePUID && account.Token != "" {
+	if account != nil && account.Type == accounts.TypeNoAuth && account.Token != "" {
 		header.Set("Oai-Device-Id", account.Token)
 	}
-	if account != nil && account.Type == accounts.TypePUID && account.Token != "" {
+	if account != nil && account.Type != accounts.TypeNoAuth && account.Token != "" {
 		header.Set("Authorization", "Bearer "+account.Token)
 	}
 	setTeamAccountHeader(header, account)
@@ -341,7 +341,7 @@ func setTeamAccountHeader(header httpclient.AuroraHeaders, account *accounts.Acc
 }
 
 func conversationURL(account *accounts.Account, path string) (string, string) {
-	if account != nil && account.Type != accounts.TypePUID {
+	if account != nil && account.Type == accounts.TypeNoAuth {
 		return strings.Replace(BaseURL, "backend-api", "backend-anon", 1) + path, "/backend-anon" + path
 	}
 	return BaseURL + path, "/backend-api" + path
@@ -388,7 +388,7 @@ func conversationHeadersWithState(account *accounts.Account, chatToken *TurnStil
 	if account != nil && account.PUID != "" {
 		cookieStr = "_puid=" + account.PUID
 	}
-	if account != nil && account.Type != accounts.TypePUID && account.Token != "" {
+	if account != nil && account.Type == accounts.TypeNoAuth && account.Token != "" {
 		header.Set("Oai-Device-Id", account.Token)
 		if cookieStr != "" {
 			cookieStr += "; "
@@ -398,7 +398,7 @@ func conversationHeadersWithState(account *accounts.Account, chatToken *TurnStil
 	if cookieStr != "" {
 		header["Cookie"] = cookieStr
 	}
-	if account != nil && account.Type == accounts.TypePUID && account.Token != "" {
+	if account != nil && account.Type != accounts.TypeNoAuth && account.Token != "" {
 		header.Set("Authorization", "Bearer "+account.Token)
 	}
 	setTeamAccountHeader(header, account)

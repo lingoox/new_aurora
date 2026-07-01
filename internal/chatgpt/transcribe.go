@@ -33,7 +33,7 @@ func TranscribeAudio(client httpclient.AuroraHttpClient, account *accounts.Accou
 	if proxy != "" {
 		client.SetProxy(proxy)
 	}
-	if account == nil || account.Token == "" || account.Type != accounts.TypePUID {
+	if account == nil || account.Token == "" || account.Type == accounts.TypeNoAuth {
 		return "", http.StatusBadRequest, fmt.Errorf("audio transcription requires a logged-in ChatGPT access token")
 	}
 	if len(audioData) == 0 {

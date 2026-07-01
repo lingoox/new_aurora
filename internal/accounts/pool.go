@@ -9,103 +9,136 @@ import (
 
 var ErrNoAvailable = errors.New("no available account of the requested type")
 
-// Pool 账号池管理
+// Pool 账号池管理，按类型分三个数组，Acquire 直接取无需遍历
 type Pool struct {
 	mu       sync.Mutex
-	entries []*Account
-	cursor   int
+	noauth   []*Account
+	free     []*Account
+	puid     []*Account
+	cursors  [3]int // 0=noauth,1=free,2=puid
+}
+
+// typeIndex 返回 AccountType 在 cursors 中的索引
+func typeIndex(t AccountType) int {
+	switch t {
+	case TypeNoAuth:
+		return 0
+	case TypeFree:
+		return 1
+	case TypePUID:
+		return 2
+	}
+	return -1
+}
+
+func (p *Pool) sliceFor(t AccountType) *[]*Account {
+	switch t {
+	case TypeNoAuth:
+		return &p.noauth
+	case TypeFree:
+		return &p.free
+	case TypePUID:
+		return &p.puid
+	}
+	return nil
 }
 
 func NewPool(initial []*Account) *Pool {
-	if initial == nil {
-		initial = []*Account{}
+	pool := &Pool{}
+	for _, acct := range initial {
+		pool.AddAccount(acct)
 	}
-	return &Pool{
-		entries: initial,
-	}
+	return pool
 }
 
-// AddAccount 添加一个账号到池中
+// AddAccount 按类型添加到对应数组
 func (p *Pool) AddAccount(acct *Account) {
+	if acct == nil {
+		return
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.entries = append(p.entries, acct)
+	switch acct.Type {
+	case TypeNoAuth:
+		p.noauth = append(p.noauth, acct)
+	case TypeFree:
+		p.free = append(p.free, acct)
+	case TypePUID:
+		p.puid = append(p.puid, acct)
+	}
 }
 
-// Acquire 按类型获取一个可用账号
+// Acquire 从对应类型数组中轮询获取一个可用账号
 func (p *Pool) Acquire(acctType AccountType) (*Account, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if len(p.entries) == 0 {
+	slice := p.sliceFor(acctType)
+	if slice == nil || len(*slice) == 0 {
 		return nil, ErrNoAvailable
 	}
 
-	for i := 0; i < len(p.entries); i++ {
-		idx := (p.cursor + i) % len(p.entries)
-		acct := p.entries[idx]
-		if acct.Status == StatusActive && acct.Type == acctType {
-			p.cursor = (idx + 1) % len(p.entries)
-			return acct, nil
+	idx := typeIndex(acctType)
+	if idx < 0 {
+		return nil, ErrNoAvailable
+	}
+
+	entries := *slice
+	for i := 0; i < len(entries); i++ {
+		cur := (p.cursors[idx] + i) % len(entries)
+		if entries[cur].Status == StatusActive {
+			p.cursors[idx] = (cur + 1) % len(entries)
+			return entries[cur], nil
 		}
 	}
 
 	return nil, ErrNoAvailable
 }
 
-// Release 归还账号，根据错误更新状态
+// Release 统计调用次数
 func (p *Pool) Release(acct *Account, result error) {
 	if acct == nil {
 		return
 	}
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
-
 	acct.TotalCalls++
 	if result != nil {
 		acct.FailedCalls++
 	}
 }
 
-// ReportFailure 标记账号为过期（如 sentinel 401），Acquire 时会自动跳过。
-// 后续健康检查会尝试续期。
+// ReportFailure 标记账号为过期，Acquire 时自动跳过，后续健康检查会尝试续期
 func (p *Pool) ReportFailure(acct *Account) bool {
 	if acct == nil {
 		return false
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for _, a := range p.entries {
-		if a.ID == acct.ID {
-			a.Status = StatusExpired
-			a.FailedCalls++
-			return true
-		}
-	}
-	return false
+	acct.Status = StatusExpired
+	acct.FailedCalls++
+	return true
 }
 
-// ExpiredAccounts 返回所有状态为 Expired 的账号（用于健康检查批量处理）。
+// ExpiredAccounts 返回所有过期账号（用于健康检查）
 func (p *Pool) ExpiredAccounts() []*Account {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var out []*Account
-	for _, a := range p.entries {
-		if a.Status == StatusExpired {
-			out = append(out, a)
+	for _, list := range [][]*Account{p.noauth, p.free, p.puid} {
+		for _, a := range list {
+			if a.Status == StatusExpired {
+				out = append(out, a)
+			}
 		}
 	}
 	return out
 }
 
-// TokenRenewer 续期回调函数，由 bootstrap 提供实现（避免 import 循环）。
-// 返回 true 表示续期成功，false 表示失败。
+// TokenRenewer 续期回调，由 bootstrap 提供
 type TokenRenewer func(acct *Account) bool
 
-// StartHealthCheck 启动健康检查 goroutine。
-// 每隔 interval 扫描所有过期账号，调用 renew 尝试续期。
-// 返回一个 stop 函数，调用后可停止健康检查。
+// StartHealthCheck 启动健康检查 goroutine
 func (p *Pool) StartHealthCheck(interval time.Duration, renew TokenRenewer) func() {
 	if interval <= 0 {
 		interval = 5 * time.Minute

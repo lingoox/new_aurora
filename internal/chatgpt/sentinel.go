@@ -41,7 +41,7 @@ func InitSentinelWithState(client httpclient.AuroraHttpClient, account *accounts
 
 	prepare, status, err := POSTSentinelPrepareWithState(client, account, requirementsToken, state)
 	if err != nil {
-		if account.Type != accounts.TypePUID && status == http.StatusUnauthorized && retry < 2 {
+		if account.Type == accounts.TypeNoAuth && status == http.StatusUnauthorized && retry < 2 {
 			time.Sleep(time.Second * 2)
 			account.Token = uuid.NewString()
 			return InitSentinelWithState(client, account, proxy, retry+1, state)
@@ -49,7 +49,7 @@ func InitSentinelWithState(client httpclient.AuroraHttpClient, account *accounts
 		return nil, status, err
 	}
 	if prepare.ForceLogin {
-		if account.Type == accounts.TypePUID {
+		if account.Type != accounts.TypeNoAuth {
 			return nil, http.StatusUnauthorized, fmt.Errorf("force login required: ChatGPT access token is expired or not accepted")
 		}
 		if retry > 1 {
@@ -96,7 +96,7 @@ func InitSentinelWithState(client httpclient.AuroraHttpClient, account *accounts
 
 	finalize, status, err := POSTSentinelFinalizeWithState(client, account, prepare.PrepareToken, proofToken, turnstileToken, state)
 	if err != nil {
-		if account.Type != accounts.TypePUID && status == http.StatusUnauthorized && retry < 2 {
+		if account.Type == accounts.TypeNoAuth && status == http.StatusUnauthorized && retry < 2 {
 			time.Sleep(time.Second * 2)
 			account.Token = uuid.NewString()
 			return InitSentinelWithState(client, account, proxy, retry+1, state)
@@ -239,7 +239,7 @@ type conversationInitResponse struct {
 func POSTConversationInit(client httpclient.AuroraHttpClient, account *accounts.Account, state *ChatClientState) (*conversationInitResponse, error) {
 	// free 用户走 backend-anon,paid 走 backend-api
 	var apiUrl string
-	if account != nil && account.Type != accounts.TypePUID {
+	if account != nil && account.Type == accounts.TypeNoAuth {
 		apiUrl = strings.Replace(BaseURL, "backend-api", "backend-anon", 1) + "/conversation/init"
 	} else {
 		apiUrl = BaseURL + "/conversation/init"
@@ -250,10 +250,10 @@ func POSTConversationInit(client httpclient.AuroraHttpClient, account *accounts.
 	header.Set("Content-Type", "application/json")
 	header.Set("X-Openai-Target-Path", targetPath)
 	header.Set("X-Openai-Target-Route", targetPath)
-	if account != nil && account.Type != accounts.TypePUID && account.Token != "" {
+	if account != nil && account.Type == accounts.TypeNoAuth && account.Token != "" {
 		header.Set("Oai-Device-Id", account.Token)
 	}
-	if account != nil && account.Type == accounts.TypePUID && account.Token != "" {
+	if account != nil && account.Type != accounts.TypeNoAuth && account.Token != "" {
 		header.Set("Authorization", "Bearer "+account.Token)
 	}
 	setTeamAccountHeader(header, account)
@@ -428,10 +428,10 @@ func POSTSentinelReq(client httpclient.AuroraHttpClient, account *accounts.Accou
 	if state == nil || state.ConversationID == "" {
 		header.Set("Referer", "https://chatgpt.com/backend-api/sentinel/frame.html?sv=20260423af3c")
 	}
-	if account != nil && account.Type != accounts.TypePUID && account.Token != "" {
+	if account != nil && account.Type == accounts.TypeNoAuth && account.Token != "" {
 		header.Set("Oai-Device-Id", account.Token)
 	}
-	if account != nil && account.Type == accounts.TypePUID && account.Token != "" {
+	if account != nil && account.Type != accounts.TypeNoAuth && account.Token != "" {
 		header.Set("Authorization", "Bearer "+account.Token)
 	}
 	setTeamAccountHeader(header, account)

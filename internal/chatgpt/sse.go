@@ -1892,10 +1892,10 @@ func HandlerTTS(response *http.Response, input string) (string, string) {
 func getTTSBlobFromURL(client httpclient.AuroraHttpClient, account *accounts.Account, reqURL string) ([]byte, int, error) {
 	header := createBaseHeader()
 	header.Set("Accept", "audio/*,*/*")
-	if account.Type == accounts.TypePUID && account.Token != "" {
+	if account.Type != accounts.TypeNoAuth && account.Token != "" {
 		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	if account.Type != accounts.TypePUID {
+	if account.Type == accounts.TypeNoAuth {
 		header.Set("Oai-Device-Id", account.Token)
 	}
 	if account.PUID != "" {
@@ -1938,7 +1938,7 @@ func GetTTS(client httpclient.AuroraHttpClient, account *accounts.Account, msgId
 	params.Set("voice", voice)
 	params.Set("format", format)
 	var reqUrl string
-	if account.Type != accounts.TypePUID {
+	if account.Type == accounts.TypeNoAuth {
 		reqUrl = strings.Replace(BaseURL, "backend-api", "backend-anon", 1) + "/synthesize?" + params.Encode()
 	} else {
 		reqUrl = BaseURL + "/synthesize?" + params.Encode()
@@ -1966,17 +1966,17 @@ func RemoveConversation(client httpclient.AuroraHttpClient, account *accounts.Ac
 		client.SetProxy(proxy)
 	}
 	var url string
-	if account.Type != accounts.TypePUID {
+	if account.Type == accounts.TypeNoAuth {
 		url = strings.Replace(BaseURL, "backend-api", "backend-anon", 1) + "/conversation/" + id
 	} else {
 		url = BaseURL + "/conversation/" + id
 	}
 	header := createBaseHeader()
 	header.Set("Content-Type", "application/json")
-	if account.Type == accounts.TypePUID && account.Token != "" {
+	if account.Type != accounts.TypeNoAuth && account.Token != "" {
 		header.Set("Authorization", "Bearer "+account.Token)
 	}
-	if account.Type != accounts.TypePUID {
+	if account.Type == accounts.TypeNoAuth {
 		header.Set("Oai-Device-Id", account.Token)
 	}
 	if account.PUID != "" {

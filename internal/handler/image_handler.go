@@ -169,8 +169,8 @@ func (h *ImageHandler) Generations(c *gin.Context) {
 		c.Abort()
 		return
 	}
-	if account.Type == accounts.TypeNoAuth {
-		c.JSON(403, gin.H{"error": "Images API does not support free/noauth accounts. Use a ChatGPT access token."})
+	if !account.Type.Satisfies(accounts.CapImageGenerate) {
+		c.JSON(403, gin.H{"error": "Images API requires a logged-in ChatGPT account."})
 		return
 	}
 
@@ -875,8 +875,8 @@ func (h *ImageHandler) runImageEditFlow(c *gin.Context, asVariation bool) {
 		c.Abort()
 		return
 	}
-	if account.Type == accounts.TypeNoAuth {
-		c.JSON(403, gin.H{"error": "Images API does not support free/noauth accounts. Use a ChatGPT access token."})
+	if !account.Type.Satisfies(accounts.CapImageGenerate) {
+		c.JSON(403, gin.H{"error": "Images API requires a logged-in ChatGPT account."})
 		return
 	}
 

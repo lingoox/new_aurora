@@ -89,8 +89,8 @@ func (h *AudioHandler) TTS(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "TTS requires a logged-in ChatGPT access token."})
 		return
 	}
-	if account.Type == accounts.TypeNoAuth {
-		c.JSON(403, gin.H{"error": "TTS does not support free/noauth accounts. Use a ChatGPT access token."})
+	if !account.Type.Satisfies(accounts.CapTTS) {
+		c.JSON(403, gin.H{"error": "TTS requires a logged-in ChatGPT account."})
 		return
 	}
 
@@ -266,8 +266,8 @@ func (h *AudioHandler) handleTranscription(c *gin.Context, isTranslation bool) {
 		}})
 		return
 	}
-	if account.Type == accounts.TypeNoAuth {
-		c.JSON(403, gin.H{"error": "Audio transcription does not support free/noauth accounts. Use a ChatGPT access token."})
+	if !account.Type.Satisfies(accounts.CapTranscribe) {
+		c.JSON(403, gin.H{"error": "Audio transcription requires a logged-in ChatGPT account."})
 		return
 	}
 

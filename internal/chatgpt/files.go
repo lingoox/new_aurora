@@ -65,7 +65,7 @@ func UploadFile(client httpclient.AuroraHttpClient, account *accounts.Account, p
 	if proxy != "" {
 		client.SetProxy(proxy)
 	}
-	if account == nil || account.Token == "" || account.Type != accounts.TypePUID {
+	if account == nil || account.Token == "" || account.Type == accounts.TypeNoAuth {
 		return UploadedFile{}, http.StatusBadRequest, fmt.Errorf("file upload requires a logged-in ChatGPT access token")
 	}
 	if len(data) == 0 {

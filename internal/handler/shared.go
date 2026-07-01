@@ -72,7 +72,7 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 				return nil, http.StatusUnauthorized, ErrNoAvailable
 			}
 		}
-		if needsPaid && acct.Type != accounts.TypePUID {
+		if needsPaid && acct.Type != accounts.TypeNoAuth {
 			return nil, http.StatusForbidden, errors.New("this endpoint requires a paid ChatGPT account")
 		}
 		return acct, http.StatusOK, nil
@@ -132,7 +132,7 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 			return nil, http.StatusUnauthorized, ErrNoAvailable
 		}
 	}
-	if needsPaid && acct.Type != accounts.TypePUID {
+	if needsPaid && acct.Type != accounts.TypeNoAuth {
 		return nil, http.StatusForbidden, errors.New("this endpoint requires a paid ChatGPT account")
 	}
 	return acct, http.StatusOK, nil
@@ -163,7 +163,7 @@ func conversationClientOrder(client **bogdanfinn.TlsClient, account *accounts.Ac
 	chatgpt.POSTConversationInit(*client, account, state)
 
 	var wsConn *websocket.Conn
-	if stream && account.Type == accounts.TypePUID {
+	if stream && account.Type.Satisfies(accounts.CapWebSocket) {
 		wsConn, err = chatgpt.DialChatWebsocketWithStateAndProxy(*client, account, state, proxyUrl)
 		if err != nil {
 			return nil, nil, nil, http.StatusInternalServerError, err

@@ -23,6 +23,7 @@ type App struct {
 	Router      *gin.Engine
 	Config      *config.Config
 	AccountPool *accounts.Pool
+	Cleanup     func() // 服务退出时调用，停止后台协程
 }
 
 // Init 完成所有初始化逻辑，返回 App 实例
@@ -112,7 +113,7 @@ func Init() (*App, error) {
 		}
 		return false
 	}
-	_ = accountPool.StartHealthCheck(10*time.Minute, renewFn)
+	stopHealthCheck := accountPool.StartHealthCheck(10*time.Minute, renewFn)
 
 	// 注册路由
 	router := handler.RegisterRouter(accountPool, &cfg)
@@ -121,6 +122,7 @@ func Init() (*App, error) {
 		Router:      router,
 		Config:      &cfg,
 		AccountPool: accountPool,
+		Cleanup:     func() { stopHealthCheck() },
 	}, nil
 }
 

@@ -222,7 +222,7 @@ func POSTconversationPreparedWithState(client httpclient.AuroraHttpClient, messa
 		return &http.Response{}, err
 	}
 	header := conversationHeadersWithState(account, chat_token, "text/event-stream", targetPath, conduitToken, turnTraceID, state)
-	if account.Type != accounts.TypePUID {
+	if account.Type == accounts.TypeNoAuth {
 		client.SetCookies("https://chatgpt.com", []*http.Cookie{
 			{Name: "oai-device-id", Value: account.Token, Path: "/", Domain: "chatgpt.com"},
 		})
