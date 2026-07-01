@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"os"
 	"strings"
+	"time"
 
 	"aurora/httpclient/bogdanfinn"
 	"aurora/internal/accounts"
@@ -100,6 +101,18 @@ func Init() (*App, error) {
 	}
 
 	accountPool := accounts.NewPool(accs)
+
+	// 启动健康检查（每 10 分钟续期过期 token）
+	renewFn := func(acct *accounts.Account) bool {
+		if acct.RefreshToken != "" {
+			return exchangeRefreshToken(acct)
+		}
+		if acct.SessionToken != "" {
+			return exchangeSessionToken(acct)
+		}
+		return false
+	}
+	_ = accountPool.StartHealthCheck(10*time.Minute, renewFn)
 
 	// 注册路由
 	router := handler.RegisterRouter(accountPool, &cfg)
