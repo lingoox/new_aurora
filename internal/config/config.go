@@ -26,6 +26,7 @@ type Config struct {
 	HTTPProxy          string
 	DebugSentinel      bool
 	IPv6CIDR           string // IPv6 子网，如 2001:db8::/64
+	IPv6IFace          string // IPv6 网卡名，自动检测子网，如 eth0
 }
 
 func Load() Config {
@@ -49,7 +50,8 @@ func Load() Config {
 		ProxyURL:           os.Getenv("PROXY_URL"),
 		HTTPProxy:          os.Getenv("http_proxy"),
 		DebugSentinel:      getBoolEnv("DEBUG_SENTINEL", false),
-IPv6CIDR:           os.Getenv("IPV6_CIDR"),
+		IPv6CIDR:           os.Getenv("IPV6_CIDR"),
+		IPv6IFace:          os.Getenv("IPV6_IFACE"),
 	}
 }
 

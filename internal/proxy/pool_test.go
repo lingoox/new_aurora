@@ -111,3 +111,15 @@ func TestIPv6PoolIgnoresIPv4(t *testing.T) {
 		t.Fatalf("IPv6 allocate should work without IPv4 proxies, got %q", ip)
 	}
 }
+
+func TestCIDRFromInterfaceEmpty(t *testing.T) {
+	if cidr := CIDRFromInterface(""); cidr != "" {
+		t.Errorf("empty iface should return empty, got %q", cidr)
+	}
+}
+
+func TestCIDRFromInterfaceNonexistent(t *testing.T) {
+	if cidr := CIDRFromInterface("nonexistent_iface_xyz"); cidr != "" {
+		t.Errorf("nonexistent iface should return empty, got %q", cidr)
+	}
+}

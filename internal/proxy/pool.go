@@ -5,8 +5,52 @@ import (
 	"log"
 	"math/big"
 	"net"
+	"strings"
 	"sync"
 )
+
+// CIDRFromInterface 解析网卡名中的全球单播 IPv6 地址，返回 CIDR 字符串。
+// 如 eth0 有地址 2001:db8:abcd::1/64 → 返回 "2001:db8:abcd::/64"。
+// 找不到时返回空字符串。
+func CIDRFromInterface(ifaceName string) string {
+	if ifaceName == "" {
+		return ""
+	}
+	iface, err := net.InterfaceByName(ifaceName)
+	if err != nil {
+		log.Printf("[proxy] cannot find interface %q: %v", ifaceName, err)
+		return ""
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		log.Printf("[proxy] cannot get addrs for %q: %v", ifaceName, err)
+		return ""
+	}
+	for _, addr := range addrs {
+		ip, ipNet, err := net.ParseCIDR(addr.String())
+		if err != nil {
+			continue
+		}
+		// 只取 IPv6 + 全球单播（非链路本地、非回环、非多播）
+		if ip.To4() != nil {
+			continue
+		}
+		if !ip.IsGlobalUnicast() {
+			continue
+		}
+		// 跳过链路本地 fe80::
+		if strings.HasPrefix(ip.String(), "fe80") {
+			continue
+		}
+		// 跳过回环 ::1
+		if ip.IsLoopback() {
+			continue
+		}
+		return ipNet.String()
+	}
+	log.Printf("[proxy] no global IPv6 address found on %q", ifaceName)
+	return ""
+}
 
 // Pool 管理代理 IP 的分配与回收。
 // IPv4 从代理列表轮询，IPv6 从 CIDR 自动生成。
