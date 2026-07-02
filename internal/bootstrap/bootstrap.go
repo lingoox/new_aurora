@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"aurora/httpclient/bogdanfinn"
 	"aurora/internal/accounts"
 	"aurora/internal/browserfp"
 	"aurora/internal/chatgpt"
@@ -134,13 +133,15 @@ func Init() (*App, error) {
 	}, nil
 }
 
-// exchangeRefreshToken 用 refresh_token 换 access_token
+// exchangeRefreshToken 用 refresh_token 换 access_token，使用账号自身的 Client 和 Proxy
 func exchangeRefreshToken(acct *accounts.Account) bool {
 	if acct.RefreshToken == "" {
 		return false
 	}
-	client := bogdanfinn.NewStdClient()
-	result, _, err := chatgpt.GETTokenForRefreshToken(client, acct.RefreshToken, "")
+	if acct.Client == nil {
+		_ = acct.InitClient()
+	}
+	result, _, err := chatgpt.GETTokenForRefreshToken(acct.Client, acct.RefreshToken, acct.Proxy)
 	if err != nil {
 		return false
 	}
@@ -153,13 +154,15 @@ func exchangeRefreshToken(acct *accounts.Account) bool {
 	return false
 }
 
-// exchangeSessionToken 用 session_token 换 access_token
+// exchangeSessionToken 用 session_token 换 access_token，使用账号自身的 Client 和 Proxy
 func exchangeSessionToken(acct *accounts.Account) bool {
 	if acct.SessionToken == "" {
 		return false
 	}
-	client := bogdanfinn.NewStdClient()
-	result, _, err := chatgpt.GETTokenForSessionToken(client, acct.SessionToken, "")
+	if acct.Client == nil {
+		_ = acct.InitClient()
+	}
+	result, _, err := chatgpt.GETTokenForSessionToken(acct.Client, acct.SessionToken, acct.Proxy)
 	if err != nil {
 		return false
 	}
