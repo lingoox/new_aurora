@@ -36,7 +36,7 @@ func Init() (*App, error) {
 
 	// 初始化代理池
 	proxies := loadProxyList()
-	proxyPool := proxy.NewPool(proxies, "")
+	proxyPool := proxy.NewPool(proxies, cfg.IPv6CIDR)
 	_ = proxyPool
 
 	// ─── 加载账号 ────────────────────────────────────────────────
