@@ -133,7 +133,7 @@ func Init() (*App, error) {
 	}, nil
 }
 
-// exchangeRefreshToken 用 refresh_token 换 access_token，使用账号自身的 Client 和 Proxy
+// exchangeRefreshToken 用 refresh_token 换 access_token，使用账号自身的 Client（已绑定代理）
 func exchangeRefreshToken(acct *accounts.Account) bool {
 	if acct.RefreshToken == "" {
 		return false
@@ -141,7 +141,7 @@ func exchangeRefreshToken(acct *accounts.Account) bool {
 	if acct.Client == nil {
 		_ = acct.InitClient()
 	}
-	result, _, err := chatgpt.GETTokenForRefreshToken(acct.Client, acct.RefreshToken, acct.Proxy)
+	result, _, err := chatgpt.GETTokenForRefreshToken(acct.Client, acct.RefreshToken, "")
 	if err != nil {
 		return false
 	}
@@ -154,7 +154,7 @@ func exchangeRefreshToken(acct *accounts.Account) bool {
 	return false
 }
 
-// exchangeSessionToken 用 session_token 换 access_token，使用账号自身的 Client 和 Proxy
+// exchangeSessionToken 用 session_token 换 access_token，使用账号自身的 Client（已绑定代理）
 func exchangeSessionToken(acct *accounts.Account) bool {
 	if acct.SessionToken == "" {
 		return false
@@ -162,7 +162,7 @@ func exchangeSessionToken(acct *accounts.Account) bool {
 	if acct.Client == nil {
 		_ = acct.InitClient()
 	}
-	result, _, err := chatgpt.GETTokenForSessionToken(acct.Client, acct.SessionToken, acct.Proxy)
+	result, _, err := chatgpt.GETTokenForSessionToken(acct.Client, acct.SessionToken, "")
 	if err != nil {
 		return false
 	}
