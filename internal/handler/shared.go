@@ -78,6 +78,7 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 	if strings.HasPrefix(token, "eyJ") {
 		acct := accounts.NewAccount(token, accounts.TypeFree, token)
 		acct.TeamUserID = teamAccountID
+		acct.Proxy = cfg.ProxyURL
 		if err := acct.InitClient(); err != nil {
 			return nil, http.StatusInternalServerError, err
 		}
@@ -109,6 +110,7 @@ func resolveAccount(c *gin.Context, pool *accounts.Pool, cfg *config.Config, nee
 			if accessToken, ok := data["access_token"].(string); ok && accessToken != "" {
 				acct := accounts.NewAccount(accessToken, accounts.TypeFree, accessToken)
 				acct.TeamUserID = teamAccountID
+				acct.Proxy = cfg.ProxyURL
 				acct.RefreshToken = token
 				if err := acct.InitClient(); err != nil {
 					return nil, http.StatusInternalServerError, err

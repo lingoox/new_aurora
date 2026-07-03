@@ -44,7 +44,6 @@ func Init() (*App, error) {
 	}
 	proxies := loadProxyList()
 	proxyPool := proxy.NewPool(proxies, ipv6CIDR)
-	_ = proxyPool
 
 	// ─── 加载账号 ────────────────────────────────────────────────
 
@@ -56,6 +55,7 @@ func Init() (*App, error) {
 		acct := accounts.CreateAccount(t.Token, accounts.TypeFree, profiles)
 		acct.TeamUserID = t.TeamID
 		acct.Status = accounts.StatusActive
+		acct.Proxy = proxyPool.Allocate()
 		accs = append(accs, acct)
 	}
 
@@ -64,6 +64,7 @@ func Init() (*App, error) {
 		acct := accounts.CreateAccount("", accounts.TypeFree, profiles)
 		acct.RefreshToken = t.Token
 		acct.TeamUserID = t.TeamID
+		acct.Proxy = proxyPool.Allocate()
 		// 立即交换一次获取 access_token
 		if exchangeRefreshToken(acct) {
 			acct.Status = accounts.StatusActive
@@ -77,6 +78,7 @@ func Init() (*App, error) {
 	for _, t := range accounts.LoadTokensFromFile("session_tokens.txt") {
 		acct := accounts.CreateAccount("", accounts.TypeFree, profiles)
 		acct.SessionToken = t.Token
+		acct.Proxy = proxyPool.Allocate()
 		// 立即交换一次获取 access_token
 		if exchangeSessionToken(acct) {
 			acct.Status = accounts.StatusActive
