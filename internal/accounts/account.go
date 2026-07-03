@@ -146,6 +146,11 @@ func (a *Account) InitClient() error {
 	}
 	tlsClient := &bogdanfinn.TlsClient{Client: baseClient}
 
+	// 2.5 记录 IPv6 源 IP 到 client，用于 debug 日志
+	if proxy.IsIPv6(a.Proxy) {
+		tlsClient.SetLocalAddr(a.Proxy)
+	}
+
 	// 3. IPv4 模式：设代理
 	if !proxy.IsIPv6(a.Proxy) && a.Proxy != "" {
 		if err := tlsClient.SetProxy(a.Proxy); err != nil {

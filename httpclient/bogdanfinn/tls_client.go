@@ -17,6 +17,8 @@ import (
 type TlsClient struct {
 	Client    tls_client.HttpClient
 	ReqBefore handler
+	proxyURL  string // 当前绑定的代理，用于 debug 日志
+	localAddr string // IPv6 绑定的源 IP，用于 debug 日志
 }
 
 type handler func(r *fhttp.Request) error
@@ -93,7 +95,7 @@ func (t *TlsClient) Request(method httpclient.HttpMethod, url string, headers ht
 			return nil, err
 		}
 	}
-	debugLog("[http] %s %s", method, sanitizeURL(url))
+	debugLog("[http] %s %s via %s", method, sanitizeURL(url), t.proxyDesc())
 	start := time.Now()
 	do, err := t.Client.Do(req)
 	elapsed := time.Since(start)
@@ -103,6 +105,22 @@ func (t *TlsClient) Request(method httpclient.HttpMethod, url string, headers ht
 	}
 	debugLog("[http] %s %s -> %d (%v)", method, sanitizeURL(url), do.StatusCode, elapsed)
 	return convertResponse(do), nil
+}
+
+// proxyDesc 返回当前代理/源 IP 描述，用于 debug 日志
+func (t *TlsClient) proxyDesc() string {
+	if t.proxyURL != "" {
+		return "proxy:" + t.proxyURL
+	}
+	if t.localAddr != "" {
+		return "src:" + t.localAddr
+	}
+	return "direct"
+}
+
+// SetLocalAddr 记录本地绑定 IP（IPv6 模式），用于 debug 日志
+func (t *TlsClient) SetLocalAddr(addr string) {
+	t.localAddr = addr
 }
 
 func debugLog(format string, args ...interface{}) {
@@ -119,6 +137,7 @@ func sanitizeURL(raw string) string {
 }
 
 func (t *TlsClient) SetProxy(url string) error {
+	t.proxyURL = url
 	return t.Client.SetProxy(url)
 }
 
