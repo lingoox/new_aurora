@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -34,16 +33,8 @@ func Init() (*App, error) {
 
 	cfg := config.Load()
 
-	// 初始化代理池 — IPv6 优先，IPV6_IFACE > IPV6_CIDR
-	ipv6CIDR := cfg.IPv6CIDR
-	if cfg.IPv6IFace != "" {
-		if cidr := proxy.CIDRFromInterface(cfg.IPv6IFace); cidr != "" {
-			ipv6CIDR = cidr
-			log.Printf("[bootstrap] detected IPv6 CIDR %s from interface %s", cidr, cfg.IPv6IFace)
-		}
-	}
 	proxies := loadProxyList()
-	proxyPool := proxy.NewPool(proxies, ipv6CIDR)
+	proxyPool := proxy.NewPool(proxies)
 
 	// ─── 加载账号 ────────────────────────────────────────────────
 
