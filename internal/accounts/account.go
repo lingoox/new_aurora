@@ -2,12 +2,10 @@ package accounts
 
 import (
 	"fmt"
-	"net"
 	"time"
 
 	"aurora/httpclient"
 	"aurora/httpclient/bogdanfinn"
-	"aurora/internal/proxy"
 	tls_client "github.com/bogdanfinn/tls-client"
 	"github.com/bogdanfinn/tls-client/profiles"
 )
@@ -129,15 +127,9 @@ func (a *Account) InitClient() error {
 		tls_client.WithTimeoutSeconds(600),
 	}
 
-	// 1. 绑定指纹画像
+	// 绑定指纹画像
 	profile := resolveTLSProfile(a.Fingerprint.TLSProfileName)
 	opts = append(opts, tls_client.WithClientProfile(profile))
-
-	// 2. IPv6 模式：绑定源 IP
-	if proxy.IsIPv6(a.Proxy) {
-		parsed := net.ParseIP(a.Proxy)
-		opts = append(opts, tls_client.WithLocalAddr(net.TCPAddr{IP: parsed}))
-	}
 
 	// 创建底层 client
 	baseClient, err := tls_client.NewHttpClient(tls_client.NewNoopLogger(), opts...)
@@ -146,13 +138,8 @@ func (a *Account) InitClient() error {
 	}
 	tlsClient := &bogdanfinn.TlsClient{Client: baseClient}
 
-	// 2.5 记录 IPv6 源 IP 到 client，用于 debug 日志
-	if proxy.IsIPv6(a.Proxy) {
-		tlsClient.SetLocalAddr(a.Proxy)
-	}
-
-	// 3. IPv4 模式：设代理
-	if !proxy.IsIPv6(a.Proxy) && a.Proxy != "" {
+	// 设代理
+	if a.Proxy != "" {
 		if err := tlsClient.SetProxy(a.Proxy); err != nil {
 			return err
 		}
