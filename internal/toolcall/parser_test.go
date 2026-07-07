@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"aurora/internal/types/official"
+	"aurora/typings/official"
 )
 
 func TestParserBasicSingleCall(t *testing.T) {

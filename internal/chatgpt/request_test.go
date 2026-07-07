@@ -3,7 +3,7 @@ package chatgpt
 import (
 	"aurora/httpclient"
 	accounts "aurora/internal/accounts"
-	"aurora/internal/types/chatgpt"
+	"aurora/typings/chatgpt"
 	"encoding/json"
 	"fmt"
 	"io"

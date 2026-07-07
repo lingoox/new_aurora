@@ -14,7 +14,7 @@ import (
 	"regexp"
 	"strings"
 
-	"aurora/internal/types/official"
+	"aurora/typings/official"
 )
 
 const (

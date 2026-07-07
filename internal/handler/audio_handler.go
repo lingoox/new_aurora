@@ -9,7 +9,7 @@ import (
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
 	"aurora/internal/config"
-	officialtypes "aurora/internal/types/official"
+	officialtypes "aurora/typings/official"
 	chatgptrequestconverter "aurora/conversion/requests/chatgpt"
 
 	"github.com/gin-gonic/gin"

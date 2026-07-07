@@ -12,8 +12,8 @@ import (
 	"aurora/httpclient/bogdanfinn"
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
-	chatgpt_types "aurora/internal/types/chatgpt"
-	officialtypes "aurora/internal/types/official"
+	chatgpt_types "aurora/typings/chatgpt"
+	officialtypes "aurora/typings/official"
 	"aurora/util"
 	"aurora/internal/config"
 

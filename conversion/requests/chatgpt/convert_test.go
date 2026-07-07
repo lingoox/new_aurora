@@ -2,7 +2,7 @@ package chatgpt
 
 import (
 	"aurora/internal/accounts"
-	"aurora/internal/types/official"
+	"aurora/typings/official"
 	"encoding/json"
 	"strings"
 	"testing"

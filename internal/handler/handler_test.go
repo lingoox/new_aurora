@@ -9,7 +9,7 @@ import (
 
 	"aurora/internal/accounts"
 	"aurora/internal/config"
-	officialtypes "aurora/internal/types/official"
+	officialtypes "aurora/typings/official"
 
 	"github.com/gin-gonic/gin"
 )

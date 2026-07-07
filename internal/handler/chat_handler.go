@@ -12,8 +12,8 @@ import (
 	"aurora/internal/chatgpt"
 	"aurora/internal/config"
 	"aurora/internal/toolcall"
-	chatgpt_types "aurora/internal/types/chatgpt"
-	officialtypes "aurora/internal/types/official"
+	chatgpt_types "aurora/typings/chatgpt"
+	officialtypes "aurora/typings/official"
 	"aurora/util"
 	chatgptrequestconverter "aurora/conversion/requests/chatgpt"
 

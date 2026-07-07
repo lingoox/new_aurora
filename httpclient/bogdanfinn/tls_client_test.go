@@ -2,7 +2,7 @@ package bogdanfinn
 
 import (
 	"aurora/httpclient"
-	chatgpt_types "aurora/internal/types/chatgpt"
+	chatgpt_types "aurora/typings/chatgpt"
 	"encoding/json"
 	"fmt"
 	"io"

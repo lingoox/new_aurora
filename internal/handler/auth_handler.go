@@ -5,7 +5,7 @@ import (
 
 	"aurora/internal/accounts"
 	"aurora/internal/chatgpt"
-	officialtypes "aurora/internal/types/official"
+	officialtypes "aurora/typings/official"
 	bogdanfinn "aurora/httpclient/bogdanfinn"
 
 	"github.com/gin-gonic/gin"
