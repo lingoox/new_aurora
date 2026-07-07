@@ -202,3 +202,11 @@ tls_client.go Request()
 - **不修改** `cleanup-old-code` 分支的任何代码
 - **保留** `internal/accounts/`（完整账号管理体系）、`internal/config/`（集中配置）、`internal/bootstrap/`（初始化入口）
 - **保留** `internal/handler/`（不退回上游的 monolith `initialize/handlers.go`）
+
+---
+
+## 7. 已知潜在问题（待评估）
+
+| # | 描述 | 来源 | 影响面 |
+|---|------|------|--------|
+| P1 | **401 后恢复不及时**：上游 `initTurnStileWithRetry` 在 paid token 401 时立即禁用并轮换下一个 paid token。我们改为 `ReportFailure` → 标记 `Expired` → 等 10 分钟健康检查续期。健康检查只用 refresh/session token 续期才能恢复，纯 access token 的账号 401 后永久不可用直到进程重启。 | 剥离 `initTurnStileWithRetry` | 若部署环境有超短会话窗口的服务 (如短 token 时效)，健康检查间隔可能过长。**待用户体验验证后决定是否缩短健康检查间隔或增加 401 后即时重试。** |
