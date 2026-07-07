@@ -23,7 +23,8 @@ Aurora 将 ChatGPT Web 后端能力转换为类 OpenAI API，支持聊天、Resp
 - `/auth/refresh`：传入 OpenAI `refresh_token` 获取 `access_token`。
 - `/auth/session`：传入 ChatGPT `session_token` 获取新的 `session_token` 和 `access_token`。
 - `/backend-api/conversation` 原始 ChatGPT conversation 请求透传。
-- 支持 `access_tokens.txt` 账号池、`free_tokens.txt` 免费 UUID 池、自动生成免费账号、代理池、TLS。
+- 支持 `access_tokens.txt` 账号池、`refresh_tokens.txt` 自动续期账号池、`session_tokens.txt` 免费登录账号池、`free_tokens.txt` 免费 UUID 池、自动生成免费账号、代理池、TLS。
+- 内置健康检查机制：定期自动续期 `refresh_token` / `session_token`，过期账号无需人工干预。
 
 ## 部署
 
@@ -102,6 +103,8 @@ ENABLE_HISTORY=false
 TOOL_CALLING_ENABLED=true
 REFUSAL_RETRIES=3
 # DEBUG_TOOL_LOG=tool_debug.log
+# DEBUG_SENTINEL=true
+# DEBUG_HTTP=true
 ```
 
 说明：
@@ -119,11 +122,17 @@ REFUSAL_RETRIES=3
 - `TOOL_CALLING_ENABLED`：设为 `false` 时忽略请求中的 `tools` 字段，关闭工具调用模拟。
 - `REFUSAL_RETRIES`：模型陷入 "sandbox 拒绝" 循环时的最大重试次数，默认 `3`。
 - `DEBUG_TOOL_LOG`：设为文件路径时，将每次工具解析的详细 trace 写入该文件（调试用）。
+- `DEBUG_SENTINEL`：设为 `true` 时在控制台输出 sentinel ping 的详细日志。
+- `DEBUG_HTTP`：设为 `true` 时在控制台输出每个 HTTP 请求的方法、URL、代理、状态码和耗时。
 
 本地账号文件：
 
-- `access_tokens.txt`：每行一个 ChatGPT `access_token`，用于需要登录账号的能力。
-- `free_tokens.txt`：每行一个 UUID device id，作为免费账号池。
+- `access_tokens.txt`：每行一个 ChatGPT `access_token`，用于需要登录账号的能力。不支持自动续期。
+- `refresh_tokens.txt`：每行一个 ChatGPT `refresh_token`，启动时自动换取 `access_token`，进程运行期间由健康检查自动续期。支持 `TeamID` 格式：`refresh_token:team_id`。
+- `session_tokens.txt`：每行一个 ChatGPT `session_token`（免费账号），启动时自动换取 `access_token`，进程运行期间由健康检查自动续期。
+- `free_tokens.txt`：每行一个 UUID device id，作为免费匿名账号池。
+
+> 账号池按类型隔离，每个账号拥有独立的 TLS 指纹、代理 IP 和 WSS 连接。
 
 ## 注意事项
 

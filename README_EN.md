@@ -21,7 +21,8 @@ For full endpoints, authentication, token exchange, and curl examples, see: [API
 - `/auth/refresh`: pass an OpenAI `refresh_token` to obtain an `access_token`.
 - `/auth/session`: pass a ChatGPT `session_token` to obtain a new `session_token` and `access_token`.
 - `/backend-api/conversation` for direct proxying of raw ChatGPT conversation requests.
-- Support for `access_tokens.txt` account pool, `free_tokens.txt` free UUID pool, automatic free account generation, proxy pool, and TLS.
+- Support for `access_tokens.txt` account pool, `refresh_tokens.txt` auto-renewing account pool, `session_tokens.txt` free login account pool, `free_tokens.txt` free UUID pool, automatic free account generation, proxy pool, and TLS.
+- Built-in health check that periodically renews `refresh_token` / `session_token` accounts automatically — no manual intervention required.
 
 ## Deployment
 
@@ -100,6 +101,8 @@ ENABLE_HISTORY=false
 TOOL_CALLING_ENABLED=true
 REFUSAL_RETRIES=3
 # DEBUG_TOOL_LOG=tool_debug.log
+# DEBUG_SENTINEL=true
+# DEBUG_HTTP=true
 ```
 
 Details:
@@ -117,11 +120,17 @@ Details:
 - `TOOL_CALLING_ENABLED`: Set to `false` to ignore the `tools` field in requests and disable tool calling emulation.
 - `REFUSAL_RETRIES`: Maximum retry attempts when the model enters a "sandbox refusal" loop; defaults to `3`.
 - `DEBUG_TOOL_LOG`: Set to a file path to write detailed trace logs for each tool call parsing (for debugging).
+- `DEBUG_SENTINEL`: Set to `true` to output detailed sentinel ping logs to the console.
+- `DEBUG_HTTP`: Set to `true` to output HTTP request details (method, URL, proxy, status, duration) to the console.
 
 Local account files:
 
-- `access_tokens.txt`: One ChatGPT `access_token` per line, used for features that require a logged-in account.
-- `free_tokens.txt`: One UUID device ID per line, serving as a free account pool.
+- `access_tokens.txt`: One ChatGPT `access_token` per line, used for features requiring a logged-in account. No auto-renewal.
+- `refresh_tokens.txt`: One ChatGPT `refresh_token` per line. Automatically exchanges for an `access_token` on startup and periodically renews via the built-in health check. Supports `TeamID` format: `refresh_token:team_id`.
+- `session_tokens.txt`: One ChatGPT `session_token` per line (free accounts). Automatically exchanges for an `access_token` on startup and periodically renews via the built-in health check.
+- `free_tokens.txt`: One UUID device ID per line, serving as an anonymous free account pool.
+
+> Accounts are isolated by type. Each account has its own TLS fingerprint, proxy IP, and WSS connection.
 
 ## Notes
 
