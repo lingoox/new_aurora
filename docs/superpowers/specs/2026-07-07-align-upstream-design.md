@@ -210,3 +210,8 @@ tls_client.go Request()
 | # | 描述 | 来源 | 影响面 |
 |---|------|------|--------|
 | P1 | **401 后恢复不及时**：上游 `initTurnStileWithRetry` 在 paid token 401 时立即禁用并轮换下一个 paid token。我们改为 `ReportFailure` → 标记 `Expired` → 等 10 分钟健康检查续期。健康检查只用 refresh/session token 续期才能恢复，纯 access token 的账号 401 后永久不可用直到进程重启。 | 剥离 `initTurnStileWithRetry` | 若部署环境有超短会话窗口的服务 (如短 token 时效)，健康检查间隔可能过长。**待用户体验验证后决定是否缩短健康检查间隔或增加 401 后即时重试。** |
+| P2 | **`StatusRateLimited` 永远无法触发**：`ReportFailure` 把 401、429、5xx 全部标记为 `StatusExpired`。429 限流不需要续期，只需等待冷却，但目前无任何代码设 `StatusRateLimited`，限流账号要等健康检查走一遍续期才能恢复，此时限流可能早已解除。 | `pool.ReportFailure` 实现 | 需增加 429 状态码判断分支设置为 `StatusRateLimited`，并在 `Acquire` 中跳过该状态。 |
+| P3 | **`JSONStore` 生产代码未使用且序列化危险**：`Account` 包含 `Client`（接口类型）和 `WSSActor`（接口类型），JSON 序列化会 panic。`Store` 接口目前只在单元测试中使用，无人接入生产路径。若将来接入可能导致运行时崩溃。 | `store.go` 实现 | 如果有计划持久化账号状态，需要添加 `json:"-"` 标签或改用选择性序列化（只序列化 Token/Status/Proxy 等基础字段）。 |
+| P4 | **`WSSActor.Subscribe` 阻塞无超时**：`commands` channel buffer 为 16，`Subscribe` 写入 channel 后阻塞等待结果。若 `Start()` 未调用或 goroutine 因重连正在退避，写入 17 条后永久阻塞。 | `wss_actor.go` Subscribe | 当前业务 handler 未调用 `Subscribe`（WSS 仅在 conversationClientOrder 中 dial 并用于流式），但未来若接入需添加超时机制（select + time.After）或预检查 `started` 状态。 |
+| P5 | **`Pool.Acquire` 不检查 `ExpiresAt`**：只过滤 `Status == StatusActive`，不检查 `acct.ExpiresAt` 是否已到达。如果 Token 已到 TTL 但 Status 从未被标记过期，会继续使用直到碰到真实的 401。 | `pool.go` Acquire | `ExpiresAt` 是预留字段，不对应任何真实 ChatGPT token TTL，目前不影响功能。 |
+| P6 | **`Pool.Release` 空实现有冗余参数**：`Release(acct *Account, result error) {}` 中 `result` 参数未被使用，调用者可能误以为传递 error 会影响池状态。 | `pool.go` Release | 纯代码异味，从共享池模式沿袭的空壳。测试中调用 `Release` 的位置很少，无实际影响。 |
