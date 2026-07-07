@@ -628,8 +628,8 @@ func TestShouldUseWebsocketHandoffSkipsCatchupAfterHTTPBody(t *testing.T) {
 }
 
 func TestCreateBaseHeaderMatchesWebClientShape(t *testing.T) {
-	first := createBaseHeader()
-	second := createBaseHeader()
+	first := createBaseHeaderForState(nil)
+	second := createBaseHeaderForState(nil)
 
 	// 对齐 conversation.txt 2026-06 抓包:英文浏览器 (en-US,en)
 	if first["Oai-Language"] != "en-US" {

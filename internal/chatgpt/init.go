@@ -2,10 +2,10 @@ package chatgpt
 
 import (
 	"aurora/httpclient"
-	"aurora/internal/browserfp"
+	"aurora/internal/accounts"
+	"aurora/internal/headerbuilder"
 	"aurora/internal/prooftoken"
 	"aurora/internal/so"
-	"aurora/internal/accounts"
 	"aurora/util"
 	"encoding/base64"
 	"encoding/json"
@@ -319,19 +319,34 @@ func sentinelHeader(account *accounts.Account, targetPath string) httpclient.Aur
 }
 
 func sentinelHeaderWithState(account *accounts.Account, targetPath string, state *ChatClientState) httpclient.AuroraHeaders {
-	header := createBaseHeaderForState(state)
-	header.Set("Accept", "*/*")
-	header.Set("Content-Type", "application/json")
-	header.Set("X-Openai-Target-Path", targetPath)
-	header.Set("X-Openai-Target-Route", targetPath)
-	if account != nil && account.Type == accounts.TypeNoAuth && account.Token != "" {
-		header.Set("Oai-Device-Id", account.Token)
+	conversationID := ""
+	deviceID := oaiDeviceID
+	sessionID := oaiSessionID
+	ua := ""
+	if state != nil {
+		if state.ConversationID != "" {
+			conversationID = state.ConversationID
+		}
+		if state.DeviceID != "" {
+			deviceID = state.DeviceID
+		}
+		if state.SessionID != "" {
+			sessionID = state.SessionID
+		}
+		if state.UserAgent != "" {
+			ua = state.UserAgent
+		}
 	}
-	if account != nil && account.Type != accounts.TypeNoAuth && account.Token != "" {
-		header.Set("Authorization", "Bearer "+account.Token)
-	}
-	setTeamAccountHeader(header, account)
-	return header
+	b := headerbuilder.New().
+		WithBaseHeaders(conversationID).
+		WithDeviceID(deviceID).
+		WithSessionID(sessionID).
+		WithUserAgent(ua).
+		WithContentType("application/json").
+		WithTargetPath(targetPath).
+		WithAuth(account).
+		WithTeamAccount(account)
+	return b.Build()
 }
 
 func setTeamAccountHeader(header httpclient.AuroraHeaders, account *accounts.Account) {
@@ -352,109 +367,83 @@ func conversationHeaders(account *accounts.Account, chatToken *TurnStile, accept
 }
 
 func conversationHeadersWithState(account *accounts.Account, chatToken *TurnStile, accept, targetPath, conduitToken, turnTraceID string, state *ChatClientState) httpclient.AuroraHeaders {
-	header := createBaseHeaderForState(state)
-	header.Set("Accept", accept)
-	header.Set("Content-Type", "application/json")
-	header.Set("X-Openai-Target-Path", targetPath)
-	header.Set("X-Openai-Target-Route", targetPath)
-	if turnTraceID != "" {
-		header.Set("X-Oai-Turn-Trace-Id", turnTraceID)
-	}
-	if conduitToken != "" || strings.HasSuffix(targetPath, "/f/conversation") || strings.HasSuffix(targetPath, "/f/conversation/prepare") {
-		header.Set("X-Conduit-Token", conduitToken)
-	}
-	if strings.HasSuffix(targetPath, "/f/conversation") && !strings.HasSuffix(targetPath, "/prepare") {
-		header.Set("Oai-Echo-Logs", "0,943,1,65876,0,68124,1,68930")
-		header.Set("Oai-Telemetry", "[1,null]")
-	}
-	if chatToken != nil {
-		if chatToken.TurnStileToken != "" {
-			header.Set("Openai-Sentinel-Chat-Requirements-Token", chatToken.TurnStileToken)
-		}
-		if chatToken.ChatRequirementsPrepareToken != "" {
-			header.Set("Openai-Sentinel-Chat-Requirements-Prepare-Token", chatToken.ChatRequirementsPrepareToken)
-		}
-		if chatToken.ProofOfWorkToken != "" {
-			header.Set("Openai-Sentinel-Proof-Token", chatToken.ProofOfWorkToken)
-		}
-		if chatToken.TurnstileToken != "" {
-			header.Set("Openai-Sentinel-Turnstile-Token", chatToken.TurnstileToken)
-		}
-		if soToken := chatToken.ensureSOToken(soDeviceIDFor(account)); soToken != "" {
-			header.Set("Openai-Sentinel-So-Token", soToken)
-		}
-	}
-	cookieStr := ""
-	if account != nil && account.PUID != "" {
-		cookieStr = "_puid=" + account.PUID
-	}
-	if account != nil && account.Type == accounts.TypeNoAuth && account.Token != "" {
-		header.Set("Oai-Device-Id", account.Token)
-		if cookieStr != "" {
-			cookieStr += "; "
-		}
-		cookieStr += "oai-did=" + account.Token
-	}
-	if cookieStr != "" {
-		header["Cookie"] = cookieStr
-	}
-	if account != nil && account.Type != accounts.TypeNoAuth && account.Token != "" {
-		header.Set("Authorization", "Bearer "+account.Token)
-	}
-	setTeamAccountHeader(header, account)
-	return header
-}
-
-func createBaseHeader() httpclient.AuroraHeaders {
-	return createBaseHeaderForState(nil)
-}
-
-func createBaseHeaderForState(state *ChatClientState) httpclient.AuroraHeaders {
-	header := make(httpclient.AuroraHeaders)
-	// 对齐 2026-06-24 chatgpt.com 浏览器抓包:Chrome 147 Win64
-	header.Set("Accept", "*/*")
-	header.Set("Accept-Language", "en-US,en;q=0.9")
-	header.Set("Oai-Language", "en-US")
-	header.Set("Origin", "https://chatgpt.com")
-	// referer 跟 state.ConversationID 联动;空就发首页
-	if state != nil && state.ConversationID != "" {
-		header.Set("Referer", "https://chatgpt.com/c/"+state.ConversationID)
-	} else {
-		header.Set("Referer", "https://chatgpt.com/")
-	}
-	// sec-ch-ua-* 对齐 Chrome 148 (与 UA / prooftoken 同步, 对齐 2026-06-24 浏览器抓包)
-	header.Set("Sec-Ch-Ua", `"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"`)
-	header.Set("Sec-Ch-Ua-Mobile", "?0")
-	header.Set("Sec-Ch-Ua-Platform", `"Windows"`)
-	header.Set("Priority", "u=1, i")
-	header.Set("Sec-Fetch-Dest", "empty")
-	header.Set("Sec-Fetch-Mode", "cors")
-	header.Set("Sec-Fetch-Site", "same-origin")
-	ua := util.FixedUserAgent
-	if state != nil && state.UserAgent != "" {
-		ua = state.UserAgent
-	}
-	header.Set("User-Agent", ua)
+	conversationID := ""
 	deviceID := oaiDeviceID
 	sessionID := oaiSessionID
+	ua := ""
 	if state != nil {
+		if state.ConversationID != "" {
+			conversationID = state.ConversationID
+		}
 		if state.DeviceID != "" {
 			deviceID = state.DeviceID
 		}
 		if state.SessionID != "" {
 			sessionID = state.SessionID
 		}
+		if state.UserAgent != "" {
+			ua = state.UserAgent
+		}
 	}
-	header.Set("Oai-Device-Id", deviceID)
-	header.Set("Oai-Session-Id", sessionID)
-	// 对齐 2026-06-24 chatgpt.com 浏览器抓包的 build / version
-	if fp := browserfp.Get(); fp != nil {
-		header.Set("Oai-Client-Version", fp.BuildID)
-	} else {
-		header.Set("Oai-Client-Version", browserfp.DefaultBuildID)
+	b := headerbuilder.New().
+		WithBaseHeaders(conversationID).
+		WithDeviceID(deviceID).
+		WithSessionID(sessionID).
+		WithUserAgent(ua).
+		WithAccept(accept).
+		WithContentType("application/json").
+		WithTargetPath(targetPath).
+		WithTurnTraceID(turnTraceID).
+		WithConversationHeaders(targetPath).
+		WithAuth(account).
+		WithCookies(account).
+		WithTeamAccount(account)
+	if conduitToken != "" || strings.HasSuffix(targetPath, "/f/conversation") || strings.HasSuffix(targetPath, "/f/conversation/prepare") {
+		b.WithConduitToken(conduitToken)
 	}
-	header.Set("Oai-Client-Build-Number", "7823760")
-	return header
+	if chatToken != nil {
+		b.WithSentinelTokens(headerbuilder.SentinelTokens{
+			TurnStileToken:               chatToken.TurnStileToken,
+			ChatRequirementsPrepareToken: chatToken.ChatRequirementsPrepareToken,
+			ProofOfWorkToken:             chatToken.ProofOfWorkToken,
+			TurnstileToken:               chatToken.TurnstileToken,
+			SOToken:                      chatToken.ensureSOToken(soDeviceIDFor(account)),
+		})
+	}
+	return b.Build()
+}
+
+func createBaseHeader() httpclient.AuroraHeaders {
+	return headerbuilder.NewBaseHeader()
+}
+
+func createBaseHeaderForState(state *ChatClientState) httpclient.AuroraHeaders {
+	conversationID := ""
+	deviceID := oaiDeviceID
+	sessionID := oaiSessionID
+	ua := ""
+	if state != nil {
+		if state.ConversationID != "" {
+			conversationID = state.ConversationID
+		}
+		if state.DeviceID != "" {
+			deviceID = state.DeviceID
+		}
+		if state.SessionID != "" {
+			sessionID = state.SessionID
+		}
+		if state.UserAgent != "" {
+			ua = state.UserAgent
+		}
+	}
+	b := headerbuilder.New().
+		WithBaseHeaders(conversationID).
+		WithDeviceID(deviceID).
+		WithSessionID(sessionID)
+	if ua != "" {
+		b.WithUserAgent(ua)
+	}
+	return b.Build()
 }
 
 // defaultUserAgent 返回全局统一的 User-Agent (Chrome 148 Windows)。
