@@ -4,6 +4,7 @@ import (
 	"aurora/conversion/response/chatgpt"
 	"aurora/httpclient"
 	"aurora/internal/accounts"
+	"aurora/internal/headerbuilder"
 	"aurora/internal/types"
 	chatgpt_types "aurora/internal/types/chatgpt"
 	official_types "aurora/internal/types/official"
@@ -927,30 +928,52 @@ func imageConversationHeaders(account *accounts.Account, turnStile *TurnStile, c
 }
 
 func imageConversationHeadersWithState(account *accounts.Account, turnStile *TurnStile, conduitToken, accept string, state *ChatClientState) httpclient.AuroraHeaders {
-	header := createBaseHeaderForState(state)
-	header.Set("Content-Type", "application/json")
-	header.Set("Accept", accept)
-	header.Set("OpenAI-Sentinel-Chat-Requirements-Token", turnStile.TurnStileToken)
-	if turnStile.ProofOfWorkToken != "" {
-		header.Set("OpenAI-Sentinel-Proof-Token", turnStile.ProofOfWorkToken)
+	conversationID := ""
+	deviceID := oaiDeviceID
+	sessionID := oaiSessionID
+	ua := ""
+	if state != nil {
+		if state.ConversationID != "" {
+			conversationID = state.ConversationID
+		}
+		if state.DeviceID != "" {
+			deviceID = state.DeviceID
+		}
+		if state.SessionID != "" {
+			sessionID = state.SessionID
+		}
+		if state.UserAgent != "" {
+			ua = state.UserAgent
+		}
 	}
-	if turnStile.TurnstileToken != "" {
-		header.Set("OpenAI-Sentinel-Turnstile-Token", turnStile.TurnstileToken)
+	acceptVal := accept
+	if acceptVal == "" {
+		acceptVal = "*/*"
 	}
+	b := headerbuilder.New().
+		WithBaseHeaders(conversationID).
+		WithDeviceID(deviceID).
+		WithSessionID(sessionID).
+		WithUserAgent(ua).
+		WithContentType("application/json").
+		WithAccept(acceptVal).
+		WithSentinelTokens(headerbuilder.SentinelTokens{
+			TurnStileToken:   turnStile.TurnStileToken,
+			ProofOfWorkToken: turnStile.ProofOfWorkToken,
+			TurnstileToken:   turnStile.TurnstileToken,
+		}).
+		WithAuth(account).
+		WithTeamAccount(account)
 	if conduitToken != "" {
-		header.Set("X-Conduit-Token", conduitToken)
+		b.WithConduitToken(conduitToken)
 	}
 	if accept == "text/event-stream" {
-		header.Set("X-Oai-Turn-Trace-Id", uuid.NewString())
-	}
-	if account.Token != "" {
-		header.Set("Authorization", "Bearer "+account.Token)
+		b.WithTurnTraceID(uuid.NewString())
 	}
 	if account.PUID != "" {
-		header.Set("Cookie", "_puid="+account.PUID+";")
+		b.WithCookies(account)
 	}
-	setTeamAccountHeader(header, account)
-	return header
+	return b.Build()
 }
 
 func prepareImageConversation(client httpclient.AuroraHttpClient, account *accounts.Account, turnStile *TurnStile, prompt, model string, state *ChatClientState) (string, error) {
