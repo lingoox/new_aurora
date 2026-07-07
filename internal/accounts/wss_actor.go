@@ -170,7 +170,7 @@ func (a *WSSActor) connect() error {
 	}
 
 	// 配置代理
-	if a.account.Proxy != "" && !IsIPv6(a.account.Proxy) {
+	if a.account.Proxy != "" {
 		proxyFunc, err := websocketProxyFunc(a.account.Proxy)
 		if err == nil && proxyFunc != nil {
 			dialer.Proxy = proxyFunc
@@ -389,14 +389,5 @@ func websocketProxyFunc(proxy string) (func(*fhttp.Request) (*url.URL, error), e
 		return nil, err
 	}
 	return fhttp.ProxyURL(proxyURL), nil
-}
-
-// IsIPv6 判断是否为 IPv6 地址
-func IsIPv6(ip string) bool {
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
-		return false
-	}
-	return parsed.To4() == nil
 }
 
