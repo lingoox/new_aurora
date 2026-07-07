@@ -18,7 +18,6 @@ type TlsClient struct {
 	Client    tls_client.HttpClient
 	ReqBefore handler
 	proxyURL  string // 当前绑定的代理，用于 debug 日志
-	localAddr string // IPv6 绑定的源 IP，用于 debug 日志
 }
 
 type handler func(r *fhttp.Request) error
@@ -107,20 +106,12 @@ func (t *TlsClient) Request(method httpclient.HttpMethod, url string, headers ht
 	return convertResponse(do), nil
 }
 
-// proxyDesc 返回当前代理/源 IP 描述，用于 debug 日志
+// proxyDesc 返回当前代理描述，用于 debug 日志
 func (t *TlsClient) proxyDesc() string {
 	if t.proxyURL != "" {
 		return "proxy:" + t.proxyURL
 	}
-	if t.localAddr != "" {
-		return "src:" + t.localAddr
-	}
 	return "direct"
-}
-
-// SetLocalAddr 记录本地绑定 IP（IPv6 模式），用于 debug 日志
-func (t *TlsClient) SetLocalAddr(addr string) {
-	t.localAddr = addr
 }
 
 func debugLog(format string, args ...interface{}) {
